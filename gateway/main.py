@@ -49,6 +49,11 @@ def get_positions():
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/orders")
+def get_orders():
+    # Récupère les 50 derniers ordres (tous statuts confondus)
+    return trading_client.get_orders(filter=None)
+
 @app.post("/order")
 def place_order(symbol: str, side: str, qty: int = 1):
     try:
