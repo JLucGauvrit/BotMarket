@@ -17,6 +17,7 @@ services:
   # 2. Le Cerveau : Utilise la Gateway
   brain:
     build: ./bot
+    env_file: .env
     depends_on:
       - gateway
       - ollama
