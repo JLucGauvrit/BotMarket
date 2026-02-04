@@ -1,0 +1,11 @@
+[theme]
+primaryColor = "#F63366"   # Couleur des boutons/focus (Rouge Alpaca)
+backgroundColor = "#0E1117" # Fond sombre (Dark Mode)
+secondaryBackgroundColor = "#262730" # Fond des sidebars/cartes
+textColor = "#FAFAFA"
+font = "sans serif"
+
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
