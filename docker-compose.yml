@@ -1,0 +1,56 @@
+services:
+  # 1. La Gateway : Isole Alpaca-py
+  gateway:
+    build: ./gateway
+    env_file: .env
+    ports:
+      - "8000:8000"
+    networks:
+      - trading-net
+
+  # 2. Le Cerveau : Utilise la Gateway
+  brain:
+    build: ./bot
+    depends_on:
+      - gateway
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    networks:
+      - trading-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: trading_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama  # PERSISTANCE DES MODÈLES (Indispensable)
+    networks:
+      - trading-net
+    # 👇 Active ceci si tu as une carte NVIDIA pour accélérer l'IA
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+
+  # 3. Observabilité avec Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - trading-net
+
+volumes:
+  ollama_data:
+
+networks:
+  trading-net:
+    driver: bridge
