@@ -3,6 +3,12 @@ services:
   gateway:
     build: ./gateway
     env_file: .env
+    develop:
+      watch:
+      - action: sync+restart
+        path: ./gateway
+        target: /app
+    restart: unless-stopped
     ports:
       - "8000:8000"
     networks:
@@ -14,6 +20,12 @@ services:
     depends_on:
       - gateway
       - ollama
+    develop:
+      watch:
+      - action: sync+restart
+        path: ./bot
+        target: /brain
+
     environment:
       - OLLAMA_HOST=http://ollama:11434
     networks:
@@ -38,15 +50,35 @@ services:
               capabilities: [gpu]
     restart: always
 
-  # 3. Observabilité avec Grafana
-  grafana:
-    image: grafana/grafana:latest
+  # 3. Observabilité
+  
+  dashboard:
+    build: ./dashboard      # Construit l'image depuis ton dossier dashboard/
+    container_name: trading_dashboard
+    develop:
+      watch:
+      - action: sync+restart
+        path: ./dashboard
+        target: /app
     ports:
-      - "3000:3000"
+      - "8501:8501"         # Port par défaut de Streamlit
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./dashboard:/app    # IMPORTANT : Permet de modifier app.py sans redémarrer le conteneur (Hot-reload)
+    environment:
+      - GATEWAY_URL=http://gateway:8000
+    depends_on:
+      - gateway
     networks:
       - trading-net
+      
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./grafana/provisioning:/etc/grafana/provisioning
+  #   networks:
+  #     - trading-net
 
 volumes:
   ollama_data:
