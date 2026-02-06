@@ -39,6 +39,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama  # PERSISTANCE DES MODÈLES (Indispensable)
+    environment:
+      - OLLAMA_DEBUG=1
     networks:
       - trading-net
     # 👇 Active ceci si tu as une carte NVIDIA pour accélérer l'IA
