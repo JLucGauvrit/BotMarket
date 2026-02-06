@@ -59,7 +59,7 @@ while True:
             st.subheader("📈 Évolution du Capital")
             fig = px.line(st.session_state.history, x="timestamp", y="equity", template="plotly_dark")
             fig.update_traces(line_color='#F63366')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # 4. Tableau des Positions (Métriques détaillées)
             st.markdown("---")
@@ -85,7 +85,7 @@ while True:
                     'Cost Basis', "Today's P/L (%)", "Today's P/L ($)", 
                     "Total P/L (%)", "Total P/L ($)"
                 ]
-                st.dataframe(df_pos[cols_pos].style.format(precision=2), use_container_width=True)
+                st.dataframe(df_pos[cols_pos].style.format(precision=2), width="stretch")
             else:
                 st.info("Aucune position active.")
 
@@ -112,7 +112,7 @@ while True:
                     'Avg. Fill Price', 'Status', 'Source', 'Submitted At', 
                     'Filled At', 'Expires At'
                 ]
-                st.dataframe(df_ord[cols_ord], use_container_width=True)
+                st.dataframe(df_ord[cols_ord], width="stretch")
             else:
                 st.info("Aucun ordre dans l'historique.")
                 
