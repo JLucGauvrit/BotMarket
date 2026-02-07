@@ -12,6 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialisation de l'historique dans la session
 if "history" not in st.session_state:
     st.session_state.history = pd.DataFrame(columns=["timestamp", "equity"])
 
@@ -22,14 +23,15 @@ def get_data():
     try:
         acct = requests.get(f"{GATEWAY_URL}/account", timeout=2).json()
         pos = requests.get(f"{GATEWAY_URL}/positions", timeout=2).json()
-        orders = requests.get(f"{GATEWAY_URL}/orders", timeout=2).json() #
+        orders = requests.get(f"{GATEWAY_URL}/orders", timeout=2).json()
         return acct, pos, orders
-    except:
+    except Exception as e:
         return None, None, None
 
 # --- UI Principal ---
 st.title("⚡ AlgoTrading Control Center")
 
+# Utilisation d'un placeholder pour éviter le rafraîchissement complet de la page
 placeholder = st.empty()
 
 while True:
@@ -44,9 +46,18 @@ while True:
             last_equity = float(account.get('last_equity', equity))
             pl_day = equity - last_equity
             
-            # Mise à jour graphique
+            # --- MISE À JOUR DE L'HISTORIQUE DE PERFORMANCE ---
             new_entry = pd.DataFrame([{"timestamp": datetime.now(), "equity": equity}])
-            st.session_state.history = pd.concat([st.session_state.history, new_entry]).tail(100)
+            
+            # Correction de la concaténation (FutureWarning)
+            # On ne concatène que si les données existent pour éviter l'erreur de types
+            to_concat = [df for df in [st.session_state.history, new_entry] if not df.empty]
+            if to_concat:
+                st.session_state.history = pd.concat(to_concat, ignore_index=True)
+            
+            # Limitation à 100 points pour la fluidité
+            if len(st.session_state.history) > 100:
+                st.session_state.history = st.session_state.history.iloc[-100:]
 
             # 2. Top Bar Metrics
             col1, col2, col3, col4 = st.columns(4)
@@ -57,35 +68,26 @@ while True:
 
             # 3. Graphique Performance
             st.subheader("📈 Évolution du Capital")
-            fig = px.line(st.session_state.history, x="timestamp", y="equity", template="plotly_dark")
-            fig.update_traces(line_color='#F63366')
-            st.plotly_chart(fig, width="stretch")
+            if not st.session_state.history.empty:
+                fig = px.line(st.session_state.history, x="timestamp", y="equity", template="plotly_dark")
+                fig.update_traces(line_color='#F63366')
+                st.plotly_chart(fig, width="stretch")
 
-            # 4. Tableau des Positions (Métriques détaillées)
+            # 4. Tableau des Positions
             st.markdown("---")
             st.subheader("📦 Positions Actuelles")
             if positions and isinstance(positions, list):
                 df_pos = pd.DataFrame(positions)
                 
-                # Calculs et renommage
+                # Conversion sécurisée des types
                 df_pos['Asset'] = df_pos['symbol']
-                df_pos['Price'] = df_pos['current_price'].astype(float)
-                df_pos['Qty'] = df_pos['qty'].astype(float)
+                df_pos['Price'] = pd.to_numeric(df_pos['current_price'], errors='coerce')
+                df_pos['Qty'] = pd.to_numeric(df_pos['qty'], errors='coerce')
                 df_pos['Side'] = df_pos['side'].str.upper()
-                df_pos['Market Value'] = df_pos['market_value'].astype(float)
-                df_pos['Avg Entry'] = df_pos['avg_entry_price'].astype(float)
-                df_pos['Cost Basis'] = df_pos['cost_basis'].astype(float)
-                df_pos["Today's P/L (%)"] = df_pos['unrealized_intraday_plpc'].astype(float) * 100
-                df_pos["Today's P/L ($)"] = df_pos['unrealized_intraday_pl'].astype(float)
-                df_pos["Total P/L (%)"] = df_pos['unrealized_plpc'].astype(float) * 100
-                df_pos["Total P/L ($)"] = df_pos['unrealized_pl'].astype(float)
-
-                cols_pos = [
-                    'Asset', 'Price', 'Qty', 'Side', 'Market Value', 'Avg Entry', 
-                    'Cost Basis', "Today's P/L (%)", "Today's P/L ($)", 
-                    "Total P/L (%)", "Total P/L ($)"
-                ]
-                st.dataframe(df_pos[cols_pos].style.format(precision=2), width="stretch")
+                df_pos['Market Value'] = pd.to_numeric(df_pos['market_value'], errors='coerce')
+                
+                cols_to_show = ['Asset', 'Price', 'Qty', 'Side', 'Market Value']
+                st.dataframe(df_pos[cols_to_show].style.format(precision=2), width="stretch")
             else:
                 st.info("Aucune position active.")
 
@@ -95,24 +97,29 @@ while True:
             if orders and isinstance(orders, list):
                 df_ord = pd.DataFrame(orders)
                 
+                # Nettoyage et formatage
                 df_ord['Asset'] = df_ord['symbol']
-                df_ord['Order Type'] = df_ord['order_type'].str.upper()
+                df_ord['Order Type'] = df_ord['order_type'].str.upper() if 'order_type' in df_ord.columns else 'MARKET'
                 df_ord['Side'] = df_ord['side'].str.upper()
-                df_ord['Qty'] = df_ord['qty']
-                df_ord['Filled Qty'] = df_ord['filled_qty']
-                df_ord['Avg. Fill Price'] = df_ord['filled_avg_price']
                 df_ord['Status'] = df_ord['status'].str.upper()
-                df_ord['Source'] = df_ord['source']
-                df_ord['Submitted At'] = pd.to_datetime(df_ord['submitted_at']).dt.strftime('%Y-%m-%d %H:%M')
-                df_ord['Filled At'] = pd.to_datetime(df_ord['filled_at']).dt.strftime('%Y-%m-%d %H:%M')
-                df_ord['Expires At'] = pd.to_datetime(df_ord['expired_at']).dt.strftime('%Y-%m-%d %H:%M')
+
+                # Correction KeyError: 'source'
+                if 'source' in df_ord.columns:
+                    df_ord['Source'] = df_ord['source']
+                else:
+                    df_ord['Source'] = 'Alpaca'
+                
+                # Formatage des dates
+                for col in ['submitted_at', 'filled_at']:
+                    if col in df_ord.columns:
+                        df_ord[col] = pd.to_datetime(df_ord[col]).dt.strftime('%H:%M:%S')
 
                 cols_ord = [
                     'Asset', 'Order Type', 'Side', 'Qty', 'Filled Qty', 
                     'Avg. Fill Price', 'Status', 'Source', 'Submitted At', 
                     'Filled At', 'Expires At'
                 ]
-                st.dataframe(df_ord[cols_ord], width="stretch")
+                st.dataframe(df_ord[cols_ord], use_container_width=True)
             else:
                 st.info("Aucun ordre dans l'historique.")
                 
@@ -122,3 +129,4 @@ while True:
             st.error("⚠️ Connexion à la Gateway impossible.")
 
     time.sleep(2)
+    
