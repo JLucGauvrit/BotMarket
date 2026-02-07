@@ -1,3 +1,8 @@
 langgraph
+langchain
 langchain-ollama
+langsmith
 requests
+duckduckgo-search 
+pandas
+yfinance
