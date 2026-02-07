@@ -1,43 +1,74 @@
 import requests
+import yfinance as yf
+import logging
 from ..shared.state import AgentState
 
 GATEWAY_URL = "http://gateway:8000"
+logger = logging.getLogger("retriever")
 
-def get_market_data(state: AgentState):
-    print(f"📡 [Retriever] Récupération des données pour {state['symbol']}...")
+def fetch_live_price(symbol: str) -> float:
+    """Récupère le prix YFinance avec gestion des alias Crypto."""
+    # Mapping des noms bruts vers format Yahoo (TICKER-USD)
+    yahoo_map = {
+        "SHIBA_INU": "SHIB-USD",
+        "SHIB": "SHIB-USD",
+        "DOGE": "DOGE-USD",
+        "BITCOIN": "BTC-USD",
+        "ETHEREUM": "ETH-USD"
+    }
+    
+    # On nettoie le symbole
+    clean_symbol = symbol.replace("-USD", "").upper()
+    search_symbol = yahoo_map.get(clean_symbol, clean_symbol)
     
     try:
-        # 1. Récupération des positions
-        pos_resp = requests.get(f"{GATEWAY_URL}/positions", timeout=2)
-        positions = pos_resp.json() if pos_resp.status_code == 200 else []
+        # 1. Tentative directe
+        ticker = yf.Ticker(search_symbol)
+        price = ticker.fast_info.get('last_price')
         
-        # 2. Récupération du compte (pour le cash)
-        acct_resp = requests.get(f"{GATEWAY_URL}/account", timeout=2)
-        account = acct_resp.json() if acct_resp.status_code == 200 else {}
-        
-        # Extraction
-        qty = 0
-        current_price = 0.0
-        
-        # On cherche si on a déjà l'actif
-        for pos in positions:
-            if pos['symbol'] == state['symbol']:
-                qty = int(pos['qty'])
-                current_price = float(pos['current_price'])
-                
-        # Fallback : Si on n'a pas de position, on devrait appeler un endpoint de prix
-        # (Pour l'instant on simule un prix si l'API ne le donne pas via positions)
-        if current_price == 0:
-            current_price = 150.0 # TODO: Créer un endpoint /price/{symbol} dans la Gateway
+        # 2. Si échec, tentative avec suffixe standard -USD (si pas déjà fait)
+        if not price and "-USD" not in search_symbol:
+             ticker = yf.Ticker(f"{search_symbol}-USD")
+             price = ticker.fast_info.get('last_price')
+             
+        if price:
+            logger.info(f"✅ Prix trouvé pour {search_symbol}: {price}$")
+            return float(price)
             
-        return {
-            "position_qty": qty,
-            "price": current_price,
-            "cash": float(account.get("cash", 0.0))
-        }
-        
     except Exception as e:
-        print(f"❌ Erreur Retriever: {e}")
-        # Valeurs de sécurité pour ne pas faire planter le graphe
-        return {"position_qty": 0, "price": 0.0, "cash": 0.0}
+        logger.error(f"❌ Erreur YFinance pour {search_symbol}: {e}")
+            
+    return 0.0
+
+def get_market_data(state: AgentState):
+    symbol = state['symbol']
+    print(f"📡 [Retriever] Récupération des données pour {symbol}...")
     
+    qty = 0
+    current_price = 0.0
+    cash = 0.0
+    
+    # A. Gateway (Cash & Positions)
+    try:
+        acct_resp = requests.get(f"{GATEWAY_URL}/account", timeout=2)
+        if acct_resp.status_code == 200:
+            cash = float(acct_resp.json().get("cash", 0.0))
+
+        pos_resp = requests.get(f"{GATEWAY_URL}/positions", timeout=2)
+        if pos_resp.status_code == 200:
+            for pos in pos_resp.json():
+                if pos['symbol'] == symbol:
+                    qty = int(pos['qty'])
+                    current_price = float(pos['current_price'])
+    except:
+        pass
+
+    # B. YFinance (si pas de prix via Alpaca)
+    if current_price == 0:
+        current_price = fetch_live_price(symbol)
+
+    return {
+        "position_qty": qty,
+        "price": current_price,
+        "cash": cash
+    }
