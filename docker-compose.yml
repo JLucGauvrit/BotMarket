@@ -3,7 +3,8 @@ services:
   # 1. La Gateway : Isole Alpaca-py
   gateway:
     build: ./gateway
-    env_file: .env
+    env_file: 
+     - .env
     develop:
       watch:
       - action: sync+restart

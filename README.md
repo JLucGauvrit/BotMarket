@@ -1,54 +1,65 @@
 # 🤖 AI Trading Bot - Alpaca x LangGraph
 
-Projet de bot de trading algorithmique piloté par une architecture d'agents (IA) locale, utilisant le Paper Trading pour tester des stratégies sans risque financier.
+Projet de bot de trading algorithmique piloté par une architecture multi-agents (IA) locale. Il utilise le **Paper Trading** pour valider des stratégies "Hunter" (recherche de pépites) sans risque financier.
 
 ## 🏗️ Architecture du Projet
 
 Le projet est entièrement conteneurisé et s'articule autour de quatre piliers :
 
-* **Brain (LangGraph)** : Orchestration des décisions via un graphe d'agents cyclique.
-* **LLM (Ollama)** : Analyse de sentiment et décisionnel technique tournant en local.
-* **Execution (Alpaca-py)** : Interface avec l'API Alpaca pour le trading simulé d'actions US.
+* **Brain (LangGraph)** : Orchestration des décisions via un graphe d'agents cyclique (Discovery, Technician, Risk, Executor).
+* **Gateway (FastAPI)** : Pont sécurisé isolant les clés API Alpaca et gérant l'exécution des ordres.
+* **LLM (Ollama)** : Analyse de sentiment et décisionnel technique tournant 100% en local via `ChatOllama`.
 * **Observability (Streamlit)** : Dashboard web pour monitorer le portfolio et les logs des agents en temps réel.
+
 
 ## 🚀 Démarrage Rapide
 
-### 1. Prérequis
+### 1. Configuration
 
-* Docker & Docker Compose.
-* Un compte [Alpaca Markets](https://alpaca.markets/) (clés API Paper Trading).
-
-### 2. Configuration
-
-Crée un fichier `.env` à la racine :
+Crée un fichier `.env` à la racine (assure-toi qu'il est listé dans ton `.dockerignore`) :
 
 ```env
-ALPACA_API_KEY=votre_cle_ici
+ALPACA_API_KEY=votre_cle_paper_ici
 ALPACA_SECRET_KEY=votre_secret_ici
+ALPACA_PAPER=True
 OLLAMA_HOST=http://ollama:11434
+MODEL=qwen2.5:1.5b
 
 ```
 
-### 3. Lancement
+### 2. Lancement
 
 ```bash
-# Lancer les services
-docker-compose up -d
+# Construire et lancer l'infrastructure
+docker-compose up -d --build
 
-# Télécharger le modèle IA (ex: Llama3)
-docker exec -it ollama ollama pull llama3
+# Le modèle est téléchargé automatiquement au premier lancement via llm_client.py
 
 ```
 
-## 📊 Services & Accès
+### 3. Exécution des Tests
 
-* **Bot Engine** : S'exécute en arrière-plan.
-* **Ollama API** : `http://localhost:11434`
-* **Dashboard Web** : `http://localhost:8501`
+Le projet inclut une suite de tests unitaires et d'intégration mockés (pas besoin de connexion API pour tester) :
 
-## 🛠️ Roadmap
+```bash
+cd pytest
+pytest -v
 
-* [ ] Implémentation du graphe de décision de base (Scan -> Analyse -> Exécution).
-* [ ] Intégration de `pandas_ta` pour les indicateurs techniques.
-* [ ] Système de logging persistant dans SQLite pour l'historique des décisions.
-* [ ] Alertes Discord/Telegram sur exécution d'ordre.
+```
+
+## 🛡️ Sécurité & Optimisation
+
+Le projet suit les recommandations **Docker Scout** pour garantir une infrastructure saine :
+
+* **Images de base** : Utilisation de `python:3.11-slim` pour réduire la taille et les vulnérabilités.
+* **Scan CVE** : Zéro vulnérabilité critique détectée sur l'image `brain`.
+* **Isolation** : Réseau interne `trading-net` pour les communications entre agents et gateway.
+
+## 🛠️ Roadmap Actualisée
+
+* [x] **Discovery V3** : Mix hybride Crypto Trending / Spicy Stocks.
+* [x] **Risk Management** : Validation d'exposition dynamique (max 20% par ligne).
+* [x] **OHLC Crypto** : Récupération des bougies historiques sur CoinGecko pour analyse technique.
+* [ ] Implémentation du mode Short (Vente à découvert).
+* [ ] Système de stop-loss suiveur (Trailing Stop) géré par la Gateway.
+* [ ] Alertes Discord sur exécution d'ordre.

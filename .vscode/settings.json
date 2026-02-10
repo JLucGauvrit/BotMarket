@@ -1,0 +1,15 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "pytest",
+    "-v"
+  ],
+  "python.testing.pytestPath": "pytest",
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.analysis.typeCheckingMode": "basic"
+}
