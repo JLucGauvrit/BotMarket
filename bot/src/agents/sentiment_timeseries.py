@@ -53,8 +53,16 @@ def get_sentiment_history(symbol: str, days: int = 7) -> List[Dict]:
 
 def calculate_sentiment_trend(history: List[Dict]) -> Dict[str, Any]:
     """Calcule tendance du sentiment (slope, volatility)."""
+    
     if len(history) < 2:
-        return {"trend": "neutral", "slope": 0, "conviction": 0}
+        return {
+            "trend": "neutral", 
+            "slope": 0.0, 
+            "conviction": 0.0,
+            "amplitude": 0.0,      # <--- Clé manquante ajoutée
+            "avg_7d": 0.0,         # <--- Clé manquante ajoutée
+            "current_score": 0.0
+        }
     
     scores = [h["score"] for h in history]
     
