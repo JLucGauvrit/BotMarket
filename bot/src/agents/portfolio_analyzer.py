@@ -1,9 +1,7 @@
 """
-Portfolio Analyzer Agent
-- Analyse TOUTES les positions vs nouvelle opportunité
-- Détecte corrélation (> 0.8 = redondant)
-- Vérifie max exposure par secteur
-- Track raison d'achat (si expirée = exit signal)
+Portfolio Analyzer Agent - SECURISED
+- Fix KeyError quand un actif n'a pas de données de corrélation
+- Vérifie l'existence des colonnes avant accès
 """
 
 import logging
@@ -19,7 +17,6 @@ logger = logging.getLogger("portfolio_analyzer")
 GATEWAY_URL = "http://gateway:8000"
 
 # DB locale: raison d'achat pour chaque position
-# {symbol: {"reason": "bullish_divergence", "entry_date": "2024-01-15", "initial_sentiment": 0.75}}
 POSITION_REASONS = {}
 
 
@@ -43,42 +40,55 @@ def get_position_reasons(symbol: str) -> Dict[str, Any]:
 
 
 def calculate_correlation_matrix(symbols: List[str], lookback_days: int = 30) -> pd.DataFrame:
-    """Calcule matrice de corrélation entre symboles."""
-    
+    """Calcule matrice de corrélation avec gestion d'erreurs robuste."""
     try:
         prices = {}
         
+        # Silence Yahoo pour éviter le spam de logs rouges
+        logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+        
         for symbol in symbols:
             try:
-                # Nettoyage du symbole pour Yahoo
-                yahoo_symbol = symbol.replace("SHIB", "SHIB-USD").replace("DOGE", "DOGE-USD")
-                if "-" not in yahoo_symbol:
-                    yahoo_symbol = f"{yahoo_symbol}-USD"
+                # Nettoyage intelligent (Similaire au Retriever)
+                clean = symbol.upper().replace("/", "").replace("-USD", "")
+                if clean.endswith("USD") and len(clean) > 3: clean = clean[:-3]
                 
-                data = yf.download(yahoo_symbol, period=f"{lookback_days}d", progress=False)
+                # Liste de candidats pour Yahoo
+                candidates = [symbol, clean, f"{clean}-USD"]
+                candidates = list(dict.fromkeys(candidates))
                 
-                if not data.empty:
-                    prices[symbol] = data['Close']
-            
-            except Exception as e:
-                logger.warning(f"⚠️ Pas de données pour {symbol}: {e}")
+                data_found = False
+                for cand in candidates:
+                    data = yf.download(cand, period=f"{lookback_days}d", progress=False)
+                    if not data.empty and 'Close' in data.columns:
+                        # Gestion MultiIndex (yfinance récent)
+                        if isinstance(data.columns, pd.MultiIndex):
+                            prices[symbol] = data['Close'][cand] # Mapping Symbol original -> Data
+                        else:
+                            prices[symbol] = data['Close']
+                        data_found = True
+                        break
+                
+                if not data_found:
+                    logger.debug(f"⚠️ Pas de data corrélation pour {symbol}")
+
+            except Exception:
+                continue
+        
+        # Rétablir logs
+        logging.getLogger("yfinance").setLevel(logging.WARNING)
         
         if len(prices) < 2:
-            logger.warning("Pas assez de symboles pour calculer corrélation")
-            return pd.DataFrame()
+            return pd.DataFrame() # Pas assez de données pour corréler
         
-        # DataFrame prix
+        # Alignement des dates et calcul
         price_df = pd.DataFrame(prices)
-        
-        # Corrélation
         correlation_matrix = price_df.corr()
-        
-        logger.info(f"✅ Matrice corrélation calculée ({len(symbols)} symboles)")
         
         return correlation_matrix
     
     except Exception as e:
-        logger.error(f"❌ Erreur matrice corrélation: {e}")
+        logger.error(f"❌ Erreur globale matrice: {e}")
         return pd.DataFrame()
 
 
@@ -104,8 +114,21 @@ def check_correlation_redundancy(new_symbol: str, current_positions: List[str], 
             "is_redundant": False,
             "highest_correlation": 0,
             "correlated_with": [],
-            "recommendation": "UNKNOWN: Données insuffisantes, NEUTRAL PASS"
+            "recommendation": "UNKNOWN: Données insuffisantes (Safe Pass)"
         }
+    
+    # --- FIX CRITIQUE: KEYERROR ---
+    # Si le new_symbol n'a pas été trouvé par Yahoo, il n'est pas dans la matrice.
+    # On ne peut pas calculer sa corrélation, donc on assume qu'il n'est pas corrélé (Safe Pass).
+    if new_symbol not in corr_matrix.columns:
+        logger.warning(f"⚠️ {new_symbol} absent de la matrice de corrélation (Data manquante).")
+        return {
+            "is_redundant": False,
+            "highest_correlation": 0,
+            "correlated_with": [],
+            "recommendation": "ADD: Pas de données historique (Nouvel actif ?)"
+        }
+    # ------------------------------
     
     # Corrélation de new_symbol vs tous les autres
     new_symbol_correlations = corr_matrix[new_symbol]
@@ -114,14 +137,16 @@ def check_correlation_redundancy(new_symbol: str, current_positions: List[str], 
     max_corr = 0
     
     for existing_symbol in current_positions:
-        corr_value = new_symbol_correlations.get(existing_symbol, 0)
-        
-        if abs(corr_value) > threshold:
-            high_corr.append({
-                "symbol": existing_symbol,
-                "correlation": corr_value
-            })
-            max_corr = max(abs(corr_value), max_corr)
+        # On vérifie aussi que la position existante est dans la matrice
+        if existing_symbol in new_symbol_correlations.index:
+            corr_value = new_symbol_correlations.get(existing_symbol, 0)
+            
+            if abs(corr_value) > threshold:
+                high_corr.append({
+                    "symbol": existing_symbol,
+                    "correlation": corr_value
+                })
+                max_corr = max(abs(corr_value), max_corr)
     
     is_redundant = len(high_corr) > 0
     
@@ -142,16 +167,13 @@ def check_correlation_redundancy(new_symbol: str, current_positions: List[str], 
 
 
 def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sector_exposure: float = 0.4) -> Dict[str, Any]:
-    """
-    Vérifie l'exposition sectorielle.
-    Exemple: Tech ne doit pas dépasser 40% du portefeuille.
-    """
+    """Vérifie l'exposition sectorielle."""
     
-    # Mapping simplifié symbole -> secteur
+    # Mapping simplifié symbole -> secteur (Extensible)
     sector_map = {
         "AAPL": "technology", "MSFT": "technology", "NVDA": "technology", "GOOGL": "technology",
         "AMZN": "consumer", "TSLA": "automotive",
-        "BTC": "crypto", "ETH": "crypto", "DOGE": "crypto", "SHIB": "crypto",
+        "BTC": "crypto", "ETH": "crypto", "DOGE": "crypto", "SHIB": "crypto", "SOL": "crypto",
         "JPM": "finance", "GS": "finance",
         "XOM": "energy", "CVX": "energy"
     }
@@ -160,10 +182,17 @@ def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sec
     sector_counts = {}
     
     for symbol in all_symbols:
-        sector = sector_map.get(symbol.upper(), "other")
+        # Heuristique simple: si non listé mais ticker court -> crypto
+        clean = symbol.replace("-USD", "").upper()
+        default_sec = "crypto" if len(clean) <= 5 and clean not in ["AAPL", "TSLA", "MSFT"] else "other"
+        
+        sector = sector_map.get(clean, default_sec)
         sector_counts[sector] = sector_counts.get(sector, 0) + 1
     
-    new_symbol_sector = sector_map.get(new_symbol.upper(), "other")
+    # Secteur du nouveau
+    clean_new = new_symbol.replace("-USD", "").upper()
+    new_symbol_sector = sector_map.get(clean_new, "crypto" if len(clean_new) <= 5 else "other")
+    
     sector_exposure = sector_counts.get(new_symbol_sector, 0) / len(all_symbols)
     
     is_overexposed = sector_exposure > max_sector_exposure
@@ -171,8 +200,6 @@ def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sec
     warning = ""
     if is_overexposed:
         warning = f"⚠️ {new_symbol_sector.upper()} serait à {sector_exposure*100:.0f}% (max: {max_sector_exposure*100:.0f}%)"
-    
-    logger.info(f"  Exposition {new_symbol_sector}: {sector_exposure*100:.0f}% | Overexposed: {is_overexposed}")
     
     return {
         "new_symbol_sector": new_symbol_sector,
@@ -183,10 +210,7 @@ def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sec
 
 
 def validate_reason_still_valid(symbol: str, current_sentiment: float) -> Dict[str, Any]:
-    """
-    Vérifie si la raison initiale d'achat est toujours valable.
-    Exemple: si on a acheté sur "sentiment bullish (0.7)" mais sentiment est maintenant -0.5
-    """
+    """Vérifie si la raison initiale d'achat est toujours valable."""
     
     reason_data = get_position_reasons(symbol)
     
@@ -229,16 +253,13 @@ def analyze_portfolio(state: AgentState) -> Dict[str, Any]:
     except:
         pass
     
-    logger.info(f"  Positions actuelles: {current_positions}")
-    
     # 2. Check corrélation
     correlation_check = check_correlation_redundancy(new_symbol, current_positions, threshold=0.8)
     
     # 3. Check exposition sectorielle
     sector_check = check_sector_exposure(new_symbol, current_positions, max_sector_exposure=0.4)
     
-    # 4. Check si raison d'achat toujours valide (pour positions existantes)
-    # Ce check n'affecte pas la NOUVELLE opportunité, mais signale des positions à exit
+    # 4. Check validité existantes
     reason_validity_existing = {}
     current_sentiment = state.get('sentiment_score', 0)
     
@@ -250,12 +271,11 @@ def analyze_portfolio(state: AgentState) -> Dict[str, Any]:
     # 5. Synthèse
     can_add = not correlation_check["is_redundant"] and not sector_check["is_overexposed"]
     
-    # Positions à réduire ou fermer
     reduce_positions = []
     if reason_validity_existing:
         reduce_positions = [pos for pos, data in reason_validity_existing.items() if not data["reason_valid"]]
     
-    result = {
+    return {
         "can_add": can_add,
         "current_positions_count": len(current_positions),
         "current_positions": current_positions,
@@ -263,26 +283,5 @@ def analyze_portfolio(state: AgentState) -> Dict[str, Any]:
         "sector_check": sector_check,
         "reduce_positions": reduce_positions,
         "positions_to_exit": list(reason_validity_existing.keys()) if reason_validity_existing else [],
-        "recommendation": _synthesize_portfolio_recommendation(
-            can_add, correlation_check, sector_check, reduce_positions
-        )
+        "recommendation": "ADD" if can_add else "SKIP"
     }
-    
-    print(f"  Can add {new_symbol}: {can_add} | Reduce: {len(reduce_positions)} | Exit: {len(reason_validity_existing)}")
-    
-    return result
-
-
-def _synthesize_portfolio_recommendation(can_add: bool, corr_check: Dict, sector_check: Dict, reduce_positions: List) -> str:
-    """Synthèse en recommandation unique."""
-    
-    if reduce_positions:
-        return f"CLOSE_first: {', '.join(reduce_positions[:2])} (raison expirée)"
-    
-    if not can_add:
-        if corr_check["is_redundant"]:
-            return f"SKIP: Trop corrélé avec {corr_check['correlated_with'][0]['symbol']}"
-        elif sector_check["is_overexposed"]:
-            return f"SKIP: {sector_check['warning']}"
-    
-    return "ADD: Opportunité saine"
