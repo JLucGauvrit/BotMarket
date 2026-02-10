@@ -1,0 +1,21 @@
+# Git & IDE
+.git
+.github
+.vscode
+.idea
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.pytest_cache/
+
+# Données & Tests
+pytest/
+test-results.xml
+*.log
