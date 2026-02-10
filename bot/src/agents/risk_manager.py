@@ -1,5 +1,5 @@
 """
-Risk Validator Agent V2 - SECURISED
+Risk Validator Agent V2 - SECURISED & CLEANED
 """
 
 import logging
@@ -11,11 +11,11 @@ logger = logging.getLogger("risk_validator")
 
 GATEWAY_URL = "http://gateway:8000"
 
-# Limites de risque
-MAX_SINGLE_POSITION_RISK_PCT = 0.02
-MAX_DAILY_LOSS_PCT = 0.05
-MIN_POSITION_VALUE = 50
-MAX_POSITION_COUNT = 10
+# --- CONFIGURATION DES LIMITES ---
+MAX_POS_EXPOSURE_PCT = 0.20  # Max 20% du portfolio sur un seul actif (Mode Hunter)
+MAX_DAILY_LOSS_PCT = 0.05    # Stop si perte journalière > 5%
+MIN_POSITION_VALUE = 20      # On baisse un peu pour accepter les petits tests
+MAX_POSITION_COUNT = 15      # Jusqu'à 15 lignes
 
 def validate_strategy(state: AgentState) -> Dict[str, Any]:
     """Agent principal: valide stratégie avant exécution."""
@@ -25,15 +25,16 @@ def validate_strategy(state: AgentState) -> Dict[str, Any]:
     decision = state.get('decision', 'hold')
     
     # --- CIRCUIT BREAKER: PRIX INVALIDE ---
-    # Empêche le "Fat Finger" sur BTC si le prix est 0
+    # Empêche le "Fat Finger" si le prix est 0 ou négatif
     current_price = state.get('price', 0.0)
     if current_price <= 0 and decision != "hold":
-        logger.critical(f"🛑 SAFETY ABORT: Tentative de trade sur {symbol} avec PRIX=0 !")
+        logger.critical(f"🛑 SAFETY ABORT: Tentative de trade sur {symbol} avec PRIX={current_price} !")
         return _reject(f"CRITICAL: Prix invalide ({current_price}$). Trading bloqué.")
     # --------------------------------------
 
     print(f"🛡️ [Risk Validator] Validation de {symbol} (Prix ref: {current_price}$)...")
     
+    # Pas de validation nécessaire pour un HOLD
     if decision == "hold":
         return {
             "approved": True,
@@ -42,7 +43,7 @@ def validate_strategy(state: AgentState) -> Dict[str, Any]:
             "adjusted_qty": 0
         }
     
-    # Récupère infos du portefeuille
+    # Récupération des données du portefeuille
     try:
         acct_resp = requests.get(f"{GATEWAY_URL}/account", timeout=2)
         if acct_resp.status_code != 200:
@@ -70,43 +71,59 @@ def validate_strategy(state: AgentState) -> Dict[str, Any]:
     if decision == "buy":
         
         entry_price = strategy.get("entry_price", current_price)
-        # Sécurité supplémentaire sur le prix d'entrée
+        # Sécurité : si la stratégie n'a pas mis de prix, on prend le prix actuel
         if entry_price <= 0: entry_price = current_price
 
+        # Quantité demandée par la stratégie (si définie)
         position_size = strategy.get("position_size", 0)
         
-        # 1a. Cash suffisant?
+        # Si la stratégie n'a pas défini de taille (cas fréquent si l'Executor gère le sizing),
+        # on simule une taille de 5% du cash pour les vérifications de risque
+        if position_size == 0 and entry_price > 0:
+            simulated_investment = cash * 0.05
+            position_size = int(simulated_investment / entry_price)
+
+        # 1a. Cash suffisant ?
         required_cash = entry_price * position_size
         
-        if cash < required_cash * 1.05:
-            # Réduit la position size
-            adjusted_size = int((cash * 0.95) / entry_price) if entry_price > 0 else 0
+        if cash < required_cash:
+            # On tente de réduire la taille pour que ça passe
+            max_affordable_qty = int(cash * 0.95 / entry_price) # Marge de 5%
             
-            if adjusted_size < 1:
+            if max_affordable_qty < 1:
                 return _reject(f"Cash insuffisant: {cash:.2f}$ < {required_cash:.2f}$")
             
-            validations.append(f"⚠️ Cash limité: Réduit position {position_size} → {adjusted_size}")
-            position_size = adjusted_size
+            validations.append(f"⚠️ Cash limité: Réduit position {position_size} → {max_affordable_qty}")
+            position_size = max_affordable_qty
         
-        # 1b. Risk par position < 2%
+        # 1b. Exposition Max par Actif (Risk Concentration)
         if portfolio_value > 0:
-            risk_pct = (entry_price * position_size) / portfolio_value
-            # Note: Calcul simplifié d'exposition ici, pour être plus strict
+            projected_exposure = entry_price * position_size
+            max_allowed_exposure = portfolio_value * MAX_POS_EXPOSURE_PCT
             
-            if risk_pct > MAX_SINGLE_POSITION_RISK_PCT * 2: # Tolérance x2 pour crypto
-                max_qty = int((portfolio_value * MAX_SINGLE_POSITION_RISK_PCT * 2) / entry_price)
-                if max_qty < position_size:
-                    validations.append(f"⚠️ Exposition élevée. Réduit {position_size} → {max_qty}")
-                    position_size = max_qty
+            if projected_exposure > max_allowed_exposure:
+                max_qty_risk = int(max_allowed_exposure / entry_price)
+                if max_qty_risk < position_size:
+                    validations.append(f"⚠️ Exposition Max ({MAX_POS_EXPOSURE_PCT*100}%): Réduit {position_size} → {max_qty_risk}")
+                    position_size = max_qty_risk
 
-        # 1c. Valeur position minimale
+        # 1c. Valeur position minimale (Anti-Poussière)
         position_value = entry_price * position_size
         if position_value < MIN_POSITION_VALUE:
-            return _reject(f"Position trop petite: {position_value:.2f}$ < {MIN_POSITION_VALUE}$")
+            # Exception : Si c'est un penny stock à moins de 1$, on accepte si qty > 10
+            if not (entry_price < 1.0 and position_size > 10):
+                return _reject(f"Position trop petite: {position_value:.2f}$ < {MIN_POSITION_VALUE}$")
         
-        # 1d. Max positions
-        if open_positions >= MAX_POSITION_COUNT:
-            return _reject(f"Portfolio saturé: {open_positions} positions")
+        # 1d. Limite nombre de positions
+        # On vérifie si c'est une nouvelle position
+        is_new_position = True
+        for pos in positions:
+            if pos['symbol'] == symbol:
+                is_new_position = False
+                break
+                
+        if is_new_position and open_positions >= MAX_POSITION_COUNT:
+            return _reject(f"Portfolio saturé: {open_positions}/{MAX_POSITION_COUNT} positions")
 
         if position_size < 1:
             return _reject("Position ajustée à 0 - rejet")
@@ -127,7 +144,11 @@ def validate_strategy(state: AgentState) -> Dict[str, Any]:
         # Vérification qu'on possède bien l'actif
         existing_qty = 0
         for pos in positions:
-            if pos['symbol'] == symbol:
+            # Nettoyage des symboles pour match (ex: BTC/USD vs BTC)
+            pos_sym = pos['symbol'].replace("/", "").replace("-USD", "")
+            target_sym = symbol.replace("/", "").replace("-USD", "")
+            
+            if pos_sym == target_sym:
                 existing_qty = int(float(pos['qty']))
                 break
         

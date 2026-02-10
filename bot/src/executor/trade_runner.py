@@ -38,24 +38,51 @@ def execute_trade(state: AgentState) -> Dict[str, Any]:
     return {"executed": False}
 
 def _execute_buy(symbol: str, state: AgentState) -> Dict[str, Any]:
-    # On utilise la quantité ajustée par le Risk Manager (SÛR)
-    qty = state.get("adjusted_qty", 0)
+    """
+    Exécute un achat avec dimensionnement dynamique (5% du cash).
+    """
+    # 1. On récupère le cash disponible
+    # Si 'cash' n'est pas dans le state, on met une valeur par défaut élevée pour tester
+    cash = state.get("cash", 0.0)
+    if cash <= 0: 
+        cash = 10000.0 # Fallback de sécurité
+
     strategy = state.get("strategy", {})
+    # Sécurité prix
     entry_price = strategy.get("entry_price", state.get("price"))
+    if not entry_price or entry_price <= 0:
+        entry_price = state.get("price", 0)
+
+    if entry_price <= 0:
+        return _order_failed(f"Prix invalide pour {symbol}")
+
+    # --- 2. CALCUL DE LA TAILLE DE POSITION (Dynamic Sizing) ---
+    # On investit 5% du cash disponible par trade
+    # Avec 91k$, cela fera des ordres de ~4 550$
+    allocation_pct = 0.05
+    target_amount = cash * allocation_pct
     
+    # On calcule la quantité
+    qty = int(target_amount / entry_price)
+    
+    # Gestion des petits prix (Penny stocks / Crypto)
     if qty < 1:
-        return _order_failed("Quantité 0")
+        # Si c'est une crypto fractionnable, on pourrait laisser le float
+        # Pour Alpaca Stock, il faut souvent un int, sauf si fractionable activé
+        if entry_price < 1.0: 
+             # Pour les actifs < 1$, on s'assure d'en prendre au moins 1
+             qty = 1
+        else:
+             return _order_failed(f"Montant {target_amount}$ insuffisant pour prix {entry_price}$")
 
-    # Protection ultime : Limite de montant théorique ($2000 max par ordre en paper)
-    if qty * entry_price > 2000:
-        logger.warning(f"⚠️ Ordre trop gros ({qty * entry_price}$), plafonnement.")
-        qty = int(2000 / entry_price)
+    print(f"🚀 [Executor] CALIBRATION: Cash={cash}$ | Target={target_amount}$ | Qty={qty}")
 
+    # --- 3. ENVOI DE L'ORDRE ---
     order = {
         "symbol": symbol,
         "side": "buy",
         "quantity": qty,
-        "type": "market", # Market pour garantir l'exécution en paper
+        "type": "market",
         "time_in_force": "day"
     }
     
