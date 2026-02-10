@@ -1,8 +1,11 @@
 import time
+import requests
 import logging
 from src.orchestrator.graph import build_graph
 from src.shared.llm_client import ensure_model_ready
-from src.agents.discovery import DiscoveryAgent # <-- Import du nouvel agent
+from src.agents.discovery import DiscoveryAgent
+
+GATEWAY_URL = "http://gateway:8000"
 
 # Configuration Logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -17,19 +20,26 @@ def run_bot():
     
     while True:
         try:
+            # -- PHASE 0 : VERIFICATION PRÉLIMINAIRE --
+            current_positions = []
+            try:
+                pos_resp = requests.get(f"{GATEWAY_URL}/positions", timeout=2)
+                if pos_resp.status_code == 200:
+                    current_positions = [p['symbol'] for p in pos_resp.json()]
+            except: 
+                pass
+
             # --- PHASE 1 : DÉCOUVERTE ---
             print("\n📡 --- Lancement du SCAN MARCHÉ ---")
-            targets = discovery.scan_market()
+            new_targets = discovery.scan_market()
             
-            if not targets:
-                print("⚠️ Aucune cible trouvée, on attend...")
-                time.sleep(60)
-                continue
+            # On fusionne les listes (On veut gérer nos positions + analyser les nouvelles)
+            # set() évite les doublons
+            all_symbols_to_process = list(set(current_positions + new_targets))
+            
+            print(f"🎯 Liste de travail : {all_symbols_to_process} (Positions: {len(current_positions)} | News: {len(new_targets)})")
 
-            # --- PHASE 2 : ANALYSE & TRADING ---
-            print(f"🎯 Cibles verrouillées pour ce cycle : {targets}")
-            
-            for symbol in targets:
+            for symbol in all_symbols_to_process:
                 print(f"\n⚡ Traitement de : {symbol}")
                 try:
                     # On invoque le graphe LangGraph pour ce symbole spécifique

@@ -6,3 +6,5 @@ requests
 duckduckgo-search 
 pandas
 yfinance
+aiohttp
+pydantic
