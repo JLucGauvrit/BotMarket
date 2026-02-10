@@ -1,12 +1,15 @@
-from typing import TypedDict, List, Literal, Optional
+from typing import TypedDict, List, Literal, Optional, Any
 
 class AgentState(TypedDict):
     symbol: str
     price: float
     position_qty: int
     
-    social_sentiment: float  # Score de -1 (Bearish) à 1 (Bullish)
-    social_summary: str      # Résumé des tweets/posts
+    # Ajout critique pour le Technicien
+    prices_df: Any  # pandas.DataFrame
+    
+    social_sentiment: float
+    social_summary: str
     
     # Analyse Technique
     rsi: float
@@ -15,3 +18,4 @@ class AgentState(TypedDict):
     # Décision Finale
     decision: Literal["buy", "sell", "hold"]
     reasoning: str
+    
