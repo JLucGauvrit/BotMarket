@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialisation de l'historique dans la session
+# Initialisation de l'historique
 if "history" not in st.session_state:
     st.session_state.history = pd.DataFrame(columns=["timestamp", "equity"])
 
@@ -25,13 +25,12 @@ def get_data():
         pos = requests.get(f"{GATEWAY_URL}/positions", timeout=2).json()
         orders = requests.get(f"{GATEWAY_URL}/orders", timeout=2).json()
         return acct, pos, orders
-    except Exception as e:
+    except Exception:
         return None, None, None
 
 # --- UI Principal ---
 st.title("⚡ AlgoTrading Control Center")
 
-# Utilisation d'un placeholder pour éviter le rafraîchissement complet de la page
 placeholder = st.empty()
 
 while True:
@@ -39,94 +38,99 @@ while True:
     
     with placeholder.container():
         if account and 'equity' in account:
-            # 1. Extraction des données financières
-            equity = float(account['equity'])
-            cash = float(account['cash'])
-            buying_power = float(account['buying_power'])
+            # 1. Données Financières
+            equity = float(account.get('equity', 0))
+            cash = float(account.get('cash', 0))
+            buying_power = float(account.get('buying_power', 0))
             last_equity = float(account.get('last_equity', equity))
             pl_day = equity - last_equity
             
-            # --- MISE À JOUR DE L'HISTORIQUE DE PERFORMANCE ---
+            # Mise à jour historique
             new_entry = pd.DataFrame([{"timestamp": datetime.now(), "equity": equity}])
-            
-            # Correction de la concaténation (FutureWarning)
-            # On ne concatène que si les données existent pour éviter l'erreur de types
             to_concat = [df for df in [st.session_state.history, new_entry] if not df.empty]
             if to_concat:
                 st.session_state.history = pd.concat(to_concat, ignore_index=True)
-            
-            # Limitation à 100 points pour la fluidité
-            if len(st.session_state.history) > 100:
-                st.session_state.history = st.session_state.history.iloc[-100:]
+                # On garde les 100 derniers points
+                if len(st.session_state.history) > 100:
+                    st.session_state.history = st.session_state.history.iloc[-100:]
 
-            # 2. Top Bar Metrics
+            # 2. Métriques
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("💰 Valeur Totale", f"${equity:,.2f}", f"{pl_day:+.2f}")
             col2.metric("💵 Cash Dispo", f"${cash:,.2f}")
             col3.metric("🛒 Buying Power", f"${buying_power:,.2f}")
-            col4.metric("📦 Positions Ouvertes", len(positions) if positions else 0)
+            col4.metric("📦 Positions", len(positions) if positions else 0)
 
-            # 3. Graphique Performance
-            st.subheader("📈 Évolution du Capital")
+            # 3. Graphique
+            st.subheader("📈 Performance")
             if not st.session_state.history.empty:
                 fig = px.line(st.session_state.history, x="timestamp", y="equity", template="plotly_dark")
                 fig.update_traces(line_color='#F63366')
                 st.plotly_chart(fig, width="stretch")
 
-            # 4. Tableau des Positions
+            # 4. Positions
             st.markdown("---")
             st.subheader("📦 Positions Actuelles")
             if positions and isinstance(positions, list):
                 df_pos = pd.DataFrame(positions)
                 
-                # Conversion sécurisée des types
+                # Création sécurisée des colonnes d'affichage
                 df_pos['Asset'] = df_pos['symbol']
-                df_pos['Price'] = pd.to_numeric(df_pos['current_price'], errors='coerce')
                 df_pos['Qty'] = pd.to_numeric(df_pos['qty'], errors='coerce')
+                df_pos['Price'] = pd.to_numeric(df_pos['current_price'], errors='coerce')
                 df_pos['Side'] = df_pos['side'].str.upper()
                 df_pos['Market Value'] = pd.to_numeric(df_pos['market_value'], errors='coerce')
+                df_pos['Cost Basis'] = pd.to_numeric(df_pos['cost_basis'], errors='coerce')
+                df_pos['P/L ($)'] = pd.to_numeric(df_pos['unrealized_pl'], errors='coerce')
                 
-                cols_to_show = ['Asset', 'Price', 'Qty', 'Side', 'Market Value']
-                st.dataframe(df_pos[cols_to_show].style.format(precision=2), width="stretch")
+                # Sélection des colonnes
+                cols_pos = ['Asset', 'Side', 'Qty', 'Price', 'Market Value', 'Cost Basis', 'P/L ($)']
+                # On s'assure qu'elles existent toutes
+                actual_cols = [c for c in cols_pos if c in df_pos.columns]
+                
+                st.dataframe(df_pos[actual_cols].style.format(precision=2), width="stretch")
             else:
                 st.info("Aucune position active.")
 
-            # 5. Historique des Ordres
+            # 5. Historique des Ordres (La partie qui plantait)
             st.markdown("---")
             st.subheader("📜 Historique des Ordres")
             if orders and isinstance(orders, list):
                 df_ord = pd.DataFrame(orders)
                 
-                # Nettoyage et formatage
+                # --- CORRECTION DU KEYERROR ---
+                # On crée explicitement les colonnes avec des noms conviviaux
+                # .get(..., 0) ou .get(..., '') évite le plantage si la clé manque
                 df_ord['Asset'] = df_ord['symbol']
-                df_ord['Order Type'] = df_ord['order_type'].str.upper() if 'order_type' in df_ord.columns else 'MARKET'
-                df_ord['Side'] = df_ord['side'].str.upper()
-                df_ord['Status'] = df_ord['status'].str.upper()
-
-                # Correction KeyError: 'source'
-                if 'source' in df_ord.columns:
-                    df_ord['Source'] = df_ord['source']
+                df_ord['Type'] = df_ord.get('order_type', 'market').astype(str).str.upper()
+                df_ord['Side'] = df_ord.get('side', '').astype(str).str.upper()
+                df_ord['Qty'] = df_ord.get('qty', 0)
+                df_ord['Filled Qty'] = df_ord.get('filled_qty', 0)
+                df_ord['Avg Price'] = df_ord.get('filled_avg_price', 0.0)
+                df_ord['Status'] = df_ord.get('status', '').astype(str).str.upper()
+                
+                # Gestion de la date (Submitted At)
+                if 'submitted_at' in df_ord.columns:
+                    df_ord['Submitted'] = pd.to_datetime(df_ord['submitted_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
                 else:
-                    df_ord['Source'] = 'Alpaca'
-                
-                # Formatage des dates
-                for col in ['submitted_at', 'filled_at']:
-                    if col in df_ord.columns:
-                        df_ord[col] = pd.to_datetime(df_ord[col]).dt.strftime('%H:%M:%S')
+                    df_ord['Submitted'] = '-'
 
-                cols_ord = [
-                    'Asset', 'Order Type', 'Side', 'Qty', 'Filled Qty', 
-                    'Avg. Fill Price', 'Status', 'Source', 'Submitted At', 
-                    'Filled At', 'Expires At'
-                ]
-                st.dataframe(df_ord[cols_ord], use_container_width=True)
-            else:
-                st.info("Aucun ordre dans l'historique.")
+                # Colonnes finales à afficher
+                cols_ord = ['Asset', 'Type', 'Side', 'Qty', 'Filled Qty', 'Avg Price', 'Status', 'Submitted']
                 
+                # Filtrage de sécurité (au cas où)
+                final_cols = [c for c in cols_ord if c in df_ord.columns]
+                
+                # Correction deprecated argument: width='stretch' remplace use_container_width=True
+                # Note: 'width=None' laisse Streamlit gérer, souvent équivalent à stretch en responsive
+                st.dataframe(df_ord[final_cols], width="stretch")
+            else:
+                st.info("Aucun ordre récent.")
+
         elif account and "error" in account:
             st.error(f"❌ Erreur Alpaca : {account['error']}")
         else:
-            st.error("⚠️ Connexion à la Gateway impossible.")
+            st.error("⚠️ En attente de la Gateway...")
 
     time.sleep(2)
     
