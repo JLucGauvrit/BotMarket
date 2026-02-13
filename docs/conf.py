@@ -34,3 +34,6 @@ language = 'fr'
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ['_static']
+
+autodoc_pydantic_model_show_json = False
+autodoc_pydantic_model_show_config_summary = False
