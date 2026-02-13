@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, END
 from ..shared.state import AgentState
 
 # Import de TOUS les agents
-from ..agents.retriever import get_market_data
+from ..agents.retriever import retriever_node
 from ..agents.fundamental_screener import screen_fundamentals
 from ..agents.technician import analyze_technical
 from ..agents.sentiment_timeseries import scan_sentiment_timeseries
@@ -154,7 +154,7 @@ def build_graph():
     # ========== NŒUDS ==========
     
     # Phase 0: Retriever (données de base)
-    workflow.add_node("retriever", get_market_data)
+    workflow.add_node("retriever", retriever_node)
     
     # Phase 1: Screening
     workflow.add_node("fundamental", screen_fundamentals)

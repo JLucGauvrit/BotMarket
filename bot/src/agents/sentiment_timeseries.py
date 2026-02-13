@@ -256,7 +256,6 @@ def aggregate_sentiment_sources(sources: List[Dict[str, Any]]) -> Dict[str, Any]
         "sources": len(sources)
     }
 
-
 def analyze_with_llm(symbol: str, sentiment_score: float, trend: Dict, sources_count: int) -> Dict[str, Any]:
     """
     Génère une analyse de contexte via LLM à partir du score de sentiment et de la tendance.
@@ -293,10 +292,21 @@ Exemples:
 Réponds UNIQUEMENT le contexte (pas plus de 30 mots).
 """
         
-        response = llm.invoke(prompt).content.strip()
+        message = llm.invoke(prompt)
         
+        # --- FIX TYPAGE PYLANCE ---
+        # content peut être str ou list (multimodal). On sécurise.
+        raw_content = message.content
+        
+        if isinstance(raw_content, list):
+            # Si c'est une liste, on joint les éléments (cas rare)
+            text_content = " ".join([str(item) for item in raw_content])
+        else:
+            # Sinon on force en string pour être sûr
+            text_content = str(raw_content)
+            
         return {
-            "context": response[:150],
+            "context": text_content.strip()[:150],
             "llm_analysis": True
         }
     
@@ -306,7 +316,7 @@ Réponds UNIQUEMENT le contexte (pas plus de 30 mots).
             "context": "Analyse technique non disponible",
             "llm_analysis": False
         }
-
+    
 
 def scan_sentiment_timeseries(state: AgentState) -> Dict[str, Any]:
     """
