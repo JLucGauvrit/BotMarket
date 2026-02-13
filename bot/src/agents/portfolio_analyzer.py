@@ -92,12 +92,19 @@ def calculate_correlation_matrix(symbols: List[str], lookback_days: int = 30) ->
                 data_found = False
                 for cand in candidates:
                     data = yf.download(cand, period=f"{lookback_days}d", progress=False)
-                    if not data.empty and 'Close' in data.columns:
+                    
+                    if data is not None and not data.empty and 'Close' in data.columns:
+                        
                         # Gestion MultiIndex (yfinance récent)
                         if isinstance(data.columns, pd.MultiIndex):
-                            prices[symbol] = data['Close'][cand] # Mapping Symbol original -> Data
+                            # On vérifie si la colonne existe pour ce ticker spécifique
+                            try:
+                                prices[symbol] = data['Close'][cand] 
+                            except KeyError:
+                                continue # Ticker non trouvé dans le MultiIndex
                         else:
                             prices[symbol] = data['Close']
+                            
                         data_found = True
                         break
                 
