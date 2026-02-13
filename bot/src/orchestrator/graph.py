@@ -233,29 +233,3 @@ def build_graph():
     logger.info("✅ Graph compilé avec 8 agents (retriever, fundamental, technical, sentiment, regime, portfolio, strategy, validator)")
     
     return workflow.compile()
-
-
-# ========== LEGACY SUPPORT ==========
-# Ancien format de graph.py (pour compatibilité)
-
-def build_legacy_graph():
-    """Ancien graphe (deprecated, garde pour compatibilité)."""
-    
-    workflow = StateGraph(AgentState)
-    
-    workflow.add_node("retriever", get_market_data)
-    workflow.add_node("social", scan_sentiment_timeseries)  # Ancien nom
-    workflow.add_node("tech", analyze_technical)
-    workflow.add_node("analyst", build_strategy)  # Ancien Analyst → nouveau Strategy
-    workflow.add_node("risk", validate_strategy)
-    workflow.add_node("executor", execute_trade)
-    
-    workflow.set_entry_point("retriever")
-    workflow.add_edge("retriever", "social")
-    workflow.add_edge("social", "tech")
-    workflow.add_edge("tech", "analyst")
-    workflow.add_edge("analyst", "risk")
-    workflow.add_edge("risk", "executor")
-    workflow.add_edge("executor", END)
-    
-    return workflow.compile()

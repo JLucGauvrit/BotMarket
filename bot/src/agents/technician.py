@@ -1,13 +1,15 @@
 """
-TECHNICAL ANALYZER V3 - FIXED PANDAS ISSUES
+TECHNICAL ANALYZER V3 - FIXED PANDAS ISSUES & TYPING
 Fix tous les bugs: RSI format, MACD Series, Bollinger ambiguous, S/R DataFrame
-Production-ready avec gestion erreurs robuste.
+Production-ready avec gestion erreurs robuste et typage correct pour LangGraph.
 """
 
 import pandas as pd
 import numpy as np
 import logging
+from typing import Dict, Any
 from datetime import datetime, timedelta
+from ..shared.state import AgentState  # <--- IMPORT CRITIQUE AJOUTÉ
 
 logger = logging.getLogger(__name__)
 
@@ -15,17 +17,7 @@ logger = logging.getLogger(__name__)
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     """
-    Calcule l'indicateur RSI (Relative Strength Index) sur une série de prix.
-
-    Args:
-        prices (pd.Series): Série de prix de clôture.
-        period (int): Période de calcul du RSI (par défaut 14).
-
-    Returns:
-        float: Valeur du RSI (0-100).
-
-    Effects:
-        - Log d'erreur si le calcul échoue.
+    Calcule RSI correctement sans erreurs pandas.
     """
     if len(prices) < period + 1:
         return 50.0  # Neutre si pas assez de données
@@ -59,19 +51,7 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
 
 def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
     """
-    Calcule l'indicateur MACD (Moving Average Convergence Divergence).
-
-    Args:
-        prices (pd.Series): Série de prix de clôture.
-        fast (int): Période EMA rapide.
-        slow (int): Période EMA lente.
-        signal (int): Période EMA du signal.
-
-    Returns:
-        dict: Dictionnaire avec 'macd', 'signal', 'histogram', 'status'.
-
-    Effects:
-        - Log d'erreur si le calcul échoue.
+    Calcule MACD correctement sans erreurs Series.
     """
     if len(prices) < slow + signal:
         return {
@@ -135,18 +115,7 @@ def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: in
 
 def calculate_bollinger_bands(prices: pd.Series, period: int = 20, std_dev: float = 2.0) -> dict:
     """
-    Calcule les bandes de Bollinger sur une série de prix.
-
-    Args:
-        prices (pd.Series): Série de prix de clôture.
-        period (int): Fenêtre de calcul (par défaut 20).
-        std_dev (float): Nombre d'écarts-types (par défaut 2.0).
-
-    Returns:
-        dict: Dictionnaire avec 'upper', 'middle', 'lower', 'position'.
-
-    Effects:
-        - Log d'erreur si le calcul échoue.
+    Calcule Bollinger Bands correctement.
     """
     if len(prices) < period:
         return {
@@ -171,7 +140,7 @@ def calculate_bollinger_bands(prices: pd.Series, period: int = 20, std_dev: floa
         lower_val = float(lower.iloc[-1]) if not pd.isna(lower.iloc[-1]) else current_price
         middle_val = float(sma.iloc[-1]) if not pd.isna(sma.iloc[-1]) else current_price
         
-        # Déterminer position (FIX: utiliser float comparison, pas Series comparison)
+        # Déterminer position
         if current_price <= lower_val + (upper_val - lower_val) * 0.1:
             position = "at_lower_band"
         elif current_price >= upper_val - (upper_val - lower_val) * 0.1:
@@ -203,17 +172,7 @@ def calculate_bollinger_bands(prices: pd.Series, period: int = 20, std_dev: floa
 
 def calculate_support_resistance(prices: pd.Series, window: int = 20) -> dict:
     """
-    Calcule les niveaux de support et résistance sur une série de prix.
-
-    Args:
-        prices (pd.Series): Série de prix de clôture.
-        window (int): Fenêtre de calcul (par défaut 20).
-
-    Returns:
-        dict: Dictionnaire avec 'support', 'resistance', 'levels'.
-
-    Effects:
-        - Log d'erreur si le calcul échoue.
+    Calcule Support/Resistance.
     """
     if len(prices) < window * 2:
         current = float(prices.iloc[-1])
@@ -224,11 +183,11 @@ def calculate_support_resistance(prices: pd.Series, window: int = 20) -> dict:
         }
     
     try:
-        # Rolling min/max (sur DataFrame, pas Series)
+        # Rolling min/max
         rolling_min = prices.rolling(window=window).min()
         rolling_max = prices.rolling(window=window).max()
         
-        # ✅ IMPORTANT: Convertir en float pour éviter ambiguous truth value
+        # ✅ IMPORTANT: Convertir en float
         support_val = float(rolling_min.iloc[-1]) if not pd.isna(rolling_min.iloc[-1]) else float(prices.iloc[-1])
         resistance_val = float(rolling_max.iloc[-1]) if not pd.isna(rolling_max.iloc[-1]) else float(prices.iloc[-1])
         
@@ -265,17 +224,7 @@ def calculate_support_resistance(prices: pd.Series, window: int = 20) -> dict:
 
 def determine_trend(prices: pd.Series, period: int = 50) -> str:
     """
-    Détermine la tendance du marché à partir des moyennes mobiles.
-
-    Args:
-        prices (pd.Series): Série de prix de clôture.
-        period (int): Fenêtre longue pour la tendance (par défaut 50).
-
-    Returns:
-        str: 'bullish', 'bearish', 'sideways' ou 'unknown'.
-
-    Effects:
-        - Log d'erreur si le calcul échoue.
+    Détermine tendance.
     """
     if len(prices) < period:
         return "unknown"
@@ -285,12 +234,12 @@ def determine_trend(prices: pd.Series, period: int = 50) -> str:
         sma_short = prices.rolling(window=20).mean()
         sma_long = prices.rolling(window=period).mean()
         
-        # ✅ IMPORTANT: Comparaison de floats, pas Series
+        # ✅ IMPORTANT: Comparaison de floats
         current_price = float(prices.iloc[-1])
         sma_short_val = float(sma_short.iloc[-1]) if not pd.isna(sma_short.iloc[-1]) else current_price
         sma_long_val = float(sma_long.iloc[-1]) if not pd.isna(sma_long.iloc[-1]) else current_price
         
-        # Logique trend (float to float comparison!)
+        # Logique trend
         if sma_short_val > sma_long_val and current_price > sma_short_val:
             trend = "bullish"
         elif sma_short_val < sma_long_val and current_price < sma_short_val:
@@ -308,18 +257,10 @@ def determine_trend(prices: pd.Series, period: int = 50) -> str:
 
 # ============ AGENT ANALYZER ============
 
-def analyze_technical(state: dict) -> dict:
+# --- CORRECTION DE TYPAGE ICI ---
+def analyze_technical(state: AgentState) -> Dict[str, Any]:
     """
     Agent principal d'analyse technique : compile tous les indicateurs majeurs.
-
-    Args:
-        state (dict): Etat de l'agent, doit contenir 'symbol' et 'prices_df'.
-
-    Returns:
-        dict: Résultat de l'analyse technique (rsi, macd, bollinger, trend, support, resistance, signal, etc.).
-
-    Effects:
-        - Logs d'information et d'avertissement.
     """
     
     symbol = state.get("symbol", "UNKNOWN")
@@ -343,7 +284,7 @@ def analyze_technical(state: dict) -> dict:
     }
 
     # Si pas de données, retourner default
-    if prices_data is None or prices_data.empty:
+    if prices_data is None or (isinstance(prices_data, pd.DataFrame) and prices_data.empty):
         logger.warning(f"⚠️ Pas de données OHLCV pour {symbol}")
         return default_response
     
@@ -439,8 +380,7 @@ def analyze_technical(state: dict) -> dict:
             "bull_score": min(bull_score, 1.0),
             "bear_score": min(bear_score, 1.0),
             "sr_levels": sr_data["levels"],
-            "amplitude": float(sr_data["resistance"] - sr_data["support"]),
-            "sr_levels": sr_data["levels"]
+            "amplitude": float(sr_data["resistance"] - sr_data["support"])
         }
         
         logger.info(
