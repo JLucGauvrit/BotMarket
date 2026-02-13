@@ -1,17 +1,17 @@
-.. BotMarket documentation master file, created by
-   sphinx-quickstart on Fri Feb 13 15:08:56 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-BotMarket documentation
-=======================
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
+Documentation du BotMarket
+==========================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Agents:
 
+.. automodule:: src.agents.discovery
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: src.agents.technician
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   

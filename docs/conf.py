@@ -5,7 +5,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../bot'))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -19,8 +19,9 @@ release = '0.1'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",  
+    'sphinx.ext.autodoc',      # Analyse les docstrings
+    'sphinx.ext.viewcode',     # Ajoute le code source à la doc
+    'sphinx.ext.napoleon',     # Supporte le format Google/NumPy que vous utilisez
 ]
 
 templates_path = ['_templates']
