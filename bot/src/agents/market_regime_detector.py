@@ -8,7 +8,7 @@ Market Regime Detector Agent
 import yfinance as yf
 import requests
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ..shared.state import AgentState
 import numpy as np
 
@@ -302,7 +302,7 @@ def _get_action_from_regime(regime: str, multiplier: float) -> str:
         return "WAIT_for_clarity"
 
 
-def detect_market_regime_agent(state: AgentState = None) -> Dict[str, Any]:
+def detect_market_regime_agent(state: Optional[AgentState] = None) -> Dict[str, Any]:
     """
     Agent principal d'analyse du contexte global de marché.
 
