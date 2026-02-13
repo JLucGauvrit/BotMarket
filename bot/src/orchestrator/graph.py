@@ -26,70 +26,129 @@ logger = logging.getLogger("graph")
 
 def route_after_fundamental_screening(state: AgentState) -> str:
     """
-    Route conditionnel après screening fondamental.
-    Si FAIL fondamental → SKIP tout l'analyse
-    Si PASS → Continue vers technical
+    Décide la route après le screening fondamental.
+
+    Cette fonction lit la clé `fundamental_pass` dans `state` pour déterminer
+    si l'actif passe le screening fondamental. Si le screening échoue, le
+    pipeline est raccourci vers un noeud de rejet.
+
+    Args:
+        state (AgentState): Etat courant de l'agent. Doit contenir la clé
+            `fundamental_pass` (bool) indiquant le résultat du screening.
+
+    Returns:
+        str: Identifiant du noeud suivant dans le graphe (ex: 'technical' ou END).
+
+    Effects:
+        - Émet des logs de niveau `warning` en cas d'échec du screening.
     """
-    
+
     fundamental_pass = state.get('fundamental_pass', True)
-    
+
     if not fundamental_pass:
         logger.warning(f"⚠️ Fundamental screening FAILED pour {state.get('symbol')} - SKIP")
         return "end_reject"  # Terminus
-    
+
     return "technical"  # Continue vers technical analysis
 
 
 def route_after_strategy(state: AgentState) -> str:
     """
-    Route après construction de la stratégie.
-    BUY/SELL → Vers Risk Validator
-    HOLD → Vers end (pas de validation d'ordre)
+    Détermine la route après la construction de la stratégie.
+
+    Si la décision finale est `hold`, le graphe aboutit à un noeud de fin
+    sans validation de risque. Pour `buy`/`sell`, le flux passe au validateur
+    de risque.
+
+    Args:
+        state (AgentState): Etat courant, attend la clé `decision` (str).
+
+    Returns:
+        str: Noeud suivant ('risk_validator' ou END).
+
+    Effects:
+        - Émet des logs d'information lorsque la décision est `hold`.
     """
-    
+
     decision = state.get('decision', 'hold')
-    
+
     if decision == "hold":
         logger.info(f"ℹ️ Décision HOLD - pas d'ordre à valider")
         return "end_hold"
-    
+
     return "risk_validator"
 
 
 def route_after_risk_validation(state: AgentState) -> str:
     """
-    Route après validation de risque.
-    Approved → Execute
-    Rejected → End reject
+    Route conditionnelle après la validation des risques.
+
+    Vérifie la clé `approved` dans `state`. Si la stratégie est approuvée, on
+    passe à l'exécution ; sinon on termine le flux en rejet.
+
+    Args:
+        state (AgentState): Etat courant, doit exposer `approved` (bool).
+
+    Returns:
+        str: 'executor' si approuvé, sinon END.
+
+    Effects:
+        - Log `warning` en cas de rejection.
     """
-    
+
     risk_approved = state.get('approved', False)
-    
+
     if not risk_approved:
         logger.warning(f"❌ Risk validation REJECTED - pas d'exécution")
         return "end_reject"
-    
+
     return "executor"
 
 
 def route_at_start(state: AgentState) -> str:
     """
-    Route au démarrage: gestion des positions vs nouvelles opportunités.
-    Si position existante: Analyser gestion
-    Si pas de position: Analyser pour BUY
+    Route initiale décidant du workflow en fonction des positions existantes.
+
+    Récupère `position_qty` et, à l'avenir, pourra brancher vers des
+    sous-workflows de gestion de position (close/modify). Actuellement,
+    tous les états démarrent par le screening fondamental.
+
+    Args:
+        state (AgentState): Etat initial, potentiellement contenant `position_qty`.
+
+    Returns:
+        str: Noeud d'entrée suivant (actuellement 'fundamental').
+
+    Effects:
+        - Aucun appel externe; peut émettre des logs si étendu.
     """
-    
+
     position_qty = state.get('position_qty', 0)
-    
+
     # TODO: Implémenter position management workflow (close/modify)
     # Pour maintenant: tout le monde passe par le même workflow
-    
+
     return "fundamental"
 
 
 def build_graph():
-    """Construit le graphe LangGraph optimisé."""
-    
+    """
+    Construit et compile le graphe LangGraph du pipeline.
+
+    Le graphe orchestre l'exécution séquentielle/conditionnelle des agents:
+    retriever -> fundamental -> technical -> sentiment -> regime -> portfolio
+    -> strategy -> risk_validator -> executor. Les routes conditionnelles sont
+    configurées via des fonctions dédiées (ex: `route_after_strategy`).
+
+    Returns:
+        Any: Graphe compilé prêt à être invoqué (format retourné par
+            `StateGraph.compile()`).
+
+    Effects:
+        - Enregistre des noeuds et edges dans l'objet `StateGraph`.
+        - Émet un log d'information à la compilation.
+    """
+
     workflow = StateGraph(AgentState)
     
     # ========== NŒUDS ==========

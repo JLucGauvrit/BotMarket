@@ -16,7 +16,16 @@ logger = logging.getLogger("market_regime")
 
 
 def get_fear_and_greed_index() -> Dict[str, Any]:
-    """Récupère Fear & Greed Index (alternative.me)."""
+    """
+    Récupère le Fear & Greed Index depuis l'API alternative.me.
+
+    Returns:
+        Dict[str, Any]: Valeur, classification et disponibilité de l'index.
+
+    Effects:
+        - Appel HTTP GET vers l'API externe.
+        - Log d'information ou d'erreur.
+    """
     try:
         url = "https://api.alternative.me/fng/?limit=1"
         resp = requests.get(url, timeout=5)
@@ -45,7 +54,16 @@ def get_fear_and_greed_index() -> Dict[str, Any]:
 
 
 def get_volatility_index() -> Dict[str, float]:
-    """Récupère VIX (volatilité). Yahoo: ^VIX"""
+    """
+    Récupère l'indice de volatilité VIX via Yahoo Finance.
+
+    Returns:
+        Dict[str, float]: Valeur du VIX, moyenne 30j, disponibilité.
+
+    Effects:
+        - Appel yfinance.
+        - Log d'information ou d'erreur.
+    """
     try:
         vix = yf.Ticker("^VIX")
         vix_data = vix.history(period="1d")
@@ -73,7 +91,19 @@ def get_volatility_index() -> Dict[str, float]:
 
 
 def get_btc_trend(period: str = "1mo") -> Dict[str, Any]:
-    """Détermine tendance de BTC."""
+    """
+    Détermine la tendance de BTC sur une période donnée.
+
+    Args:
+        period (str): Période d'analyse (ex: '1mo').
+
+    Returns:
+        Dict[str, Any]: Tendance, variation en %, prix courant, disponibilité.
+
+    Effects:
+        - Appel yfinance.
+        - Log d'information ou d'erreur.
+    """
     try:
         btc = yf.Ticker("BTC-USD")
         btc_data = btc.history(period=period)
@@ -110,7 +140,19 @@ def get_btc_trend(period: str = "1mo") -> Dict[str, Any]:
 
 
 def get_correlation_btc_stocks(lookback_days: int = 30) -> Dict[str, float]:
-    """Calcule corrélation BTC vs SPY (actions)."""
+    """
+    Calcule la corrélation entre BTC et SPY sur une période donnée.
+
+    Args:
+        lookback_days (int): Fenêtre de calcul en jours.
+
+    Returns:
+        Dict[str, float]: Corrélation et disponibilité.
+
+    Effects:
+        - Appel yfinance.
+        - Log d'information ou d'erreur.
+    """
     try:
         # BTC-USD historique
         btc = yf.Ticker("BTC-USD")
@@ -154,8 +196,16 @@ def detect_market_regime(
     correlation: float
 ) -> Dict[str, Any]:
     """
-    Détermine le régime de marché global.
-    Retourne: regime + position_multiplier (0.5 = risk-off, 1.0 = normal, 1.5 = risk-on)
+    Détermine le régime de marché global à partir de plusieurs indicateurs.
+
+    Args:
+        vix (float): Valeur du VIX.
+        fear_greed (int): Score Fear & Greed.
+        btc_trend (str): Tendance BTC ('bullish', 'bearish', etc.).
+        correlation (float): Corrélation BTC-SPY.
+
+    Returns:
+        Dict[str, Any]: Régime, multiplicateur de position, reasoning, recommandation d'action.
     """
     
     regime = "unknown"
@@ -227,7 +277,16 @@ def detect_market_regime(
 
 
 def _get_action_from_regime(regime: str, multiplier: float) -> str:
-    """Recommandation d'action basée sur le régime."""
+    """
+    Génère une recommandation d'action en fonction du régime de marché.
+
+    Args:
+        regime (str): Régime détecté ('risk_on', 'risk_off', etc.).
+        multiplier (float): Multiplicateur de position.
+
+    Returns:
+        str: Recommandation d'action ('CLOSE_POSITIONS_or_GO_SHORT', etc.).
+    """
     
     if regime == "risk_off":
         if multiplier < 0.5:
@@ -244,7 +303,19 @@ def _get_action_from_regime(regime: str, multiplier: float) -> str:
 
 
 def detect_market_regime_agent(state: AgentState = None) -> Dict[str, Any]:
-    """Agent principal: analyse le contexte global."""
+    """
+    Agent principal d'analyse du contexte global de marché.
+
+    Args:
+        state (AgentState, optionnel): Etat de l'agent (non utilisé ici).
+
+    Returns:
+        Dict[str, Any]: Résultat de l'analyse de régime (régime, multiplicateur, reasoning, etc.).
+
+    Effects:
+        - Appels API externes (yfinance, alternative.me).
+        - Logs d'information et d'erreur.
+    """
     
     print("🌍 [Market Regime] Analyse du contexte global...")
     

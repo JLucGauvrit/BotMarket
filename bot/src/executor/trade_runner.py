@@ -12,8 +12,29 @@ GATEWAY_URL = "http://gateway:8000"
 
 def execute_trade(state: AgentState) -> Dict[str, Any]:
     """
-    Agent d'exécution sécurisé.
+    Exécute (ou prépare) un ordre en fonction de l'état fourni.
+
+    Cette fonction est le point d'entrée du noeud d'exécution du graphe. Elle
+    vérifie les conditions de sécurité (prix valide, approbation du gestionnaire
+    de risque) et délègue vers l'exécution d'achat/vente. En cas de `hold` ou
+    d'absence d'approbation, aucun ordre n'est envoyé.
+
+    Args:
+        state (AgentState): Etat complet contenant au minimum les clés:
+            - `symbol` (str): symbole de l'actif.
+            - `decision` (str): 'buy'|'sell'|'hold'.
+            - `approved` (bool): résultat du validateur de risque.
+            - `price` (float): prix utilisé pour les checks de sécurité.
+
+    Returns:
+        Dict[str, Any]: Structure indiquant l'issue, exemple:
+            {"executed": bool, "order_id": Optional[str], "reason": Optional[str]}
+
+    Effects:
+        - Émet des logs de niveau `critical`/`error`/`info` selon le cas.
+        - Peut faire un POST vers le service Gateway via `_send_order`.
     """
+
     symbol = state.get('symbol', 'UNKNOWN')
     decision = state.get('decision', 'hold')
     approved = state.get('approved', False)
@@ -39,7 +60,21 @@ def execute_trade(state: AgentState) -> Dict[str, Any]:
 
 def _execute_buy(symbol: str, state: AgentState) -> Dict[str, Any]:
     """
-    Exécute un achat avec dimensionnement dynamique (5% du cash).
+    Calcule la taille de position et envoie un ordre d'achat.
+
+    La taille est déterminée en allouant 5% du cash disponible (`cash` dans
+    `state`). Des fallback sont appliqués pour garantir une quantité minimale.
+
+    Args:
+        symbol (str): Symbole de l'actif à acheter.
+        state (AgentState): Etat contenant au moins `cash`, `strategy` et `price`.
+
+    Returns:
+        Dict[str, Any]: Résultat de l'appel `_send_order` indiquant succès ou échec.
+
+    Effects:
+        - Peut appeler `_send_order` qui effectue un POST vers `{GATEWAY_URL}/orders`.
+        - Émet des logs informatifs et d'erreur en cas de conditions non satisfaites.
     """
     # 1. On récupère le cash disponible
     # Si 'cash' n'est pas dans le state, on met une valeur par défaut élevée pour tester
@@ -89,9 +124,24 @@ def _execute_buy(symbol: str, state: AgentState) -> Dict[str, Any]:
     return _send_order(order)
 
 def _execute_sell(symbol: str, state: AgentState) -> Dict[str, Any]:
+    """
+    Prépare et envoie un ordre de vente en fonction de la quantité ajustée.
+
+    Args:
+        symbol (str): Symbole de l'actif à vendre.
+        state (AgentState): Etat contenant `adjusted_qty` représentant la quantité à vendre.
+
+    Returns:
+        Dict[str, Any]: Résultat de l'opération (mêmes clefs que `_send_order`).
+
+    Effects:
+        - En cas de `adjusted_qty` insuffisant, utilise `_order_failed` et logge l'erreur.
+        - Envoie un POST vers le Gateway si la quantité est suffisante.
+    """
+
     qty = state.get("adjusted_qty", 0)
     if qty < 1: return _order_failed("Rien à vendre")
-    
+
     order = {
         "symbol": symbol,
         "side": "sell",
@@ -102,6 +152,21 @@ def _execute_sell(symbol: str, state: AgentState) -> Dict[str, Any]:
     return _send_order(order)
 
 def _send_order(order: Dict) -> Dict:
+    """
+    Envoie l'ordre au service Gateway via HTTP POST.
+
+    Args:
+        order (Dict): Dictionnaire contenant les paramètres de l'ordre
+            (symbol, side, quantity, type, ...).
+
+    Returns:
+        Dict: Objet indiquant l'exécution: {"executed": bool, "order_id": Optional[str], "reason": Optional[str]}.
+
+    Effects:
+        - Effectue un POST HTTP vers `{GATEWAY_URL}/orders`.
+        - Logge l'identifiant de l'ordre en cas de succès, ou l'erreur en cas d'échec.
+    """
+
     try:
         resp = requests.post(f"{GATEWAY_URL}/orders", json=order, timeout=5)
         if resp.status_code == 200:
@@ -114,5 +179,18 @@ def _send_order(order: Dict) -> Dict:
         return _order_failed(str(e))
 
 def _order_failed(reason: str):
+    """
+    Helper pour uniformiser la réponse d'échec d'ordre.
+
+    Args:
+        reason (str): Raison textuelle du rejet/échec.
+
+    Returns:
+        Dict: {"executed": False, "reason": reason}.
+
+    Effects:
+        - Émet un log d'erreur contenant la raison.
+    """
+
     logger.error(f"❌ Echec ordre: {reason}")
     return {"executed": False, "reason": reason}

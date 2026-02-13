@@ -15,14 +15,17 @@ logger = logging.getLogger(__name__)
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     """
-    Calcule RSI correctement sans erreurs pandas.
-    
+    Calcule l'indicateur RSI (Relative Strength Index) sur une série de prix.
+
     Args:
-        prices: Series de prix (Close)
-        period: Période RSI (défaut 14)
-    
+        prices (pd.Series): Série de prix de clôture.
+        period (int): Période de calcul du RSI (par défaut 14).
+
     Returns:
-        float RSI entre 0-100
+        float: Valeur du RSI (0-100).
+
+    Effects:
+        - Log d'erreur si le calcul échoue.
     """
     if len(prices) < period + 1:
         return 50.0  # Neutre si pas assez de données
@@ -56,10 +59,19 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
 
 def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
     """
-    Calcule MACD correctement sans erreurs Series.
-    
+    Calcule l'indicateur MACD (Moving Average Convergence Divergence).
+
+    Args:
+        prices (pd.Series): Série de prix de clôture.
+        fast (int): Période EMA rapide.
+        slow (int): Période EMA lente.
+        signal (int): Période EMA du signal.
+
     Returns:
-        dict avec macd, signal, histogram, status
+        dict: Dictionnaire avec 'macd', 'signal', 'histogram', 'status'.
+
+    Effects:
+        - Log d'erreur si le calcul échoue.
     """
     if len(prices) < slow + signal:
         return {
@@ -123,10 +135,18 @@ def calculate_macd(prices: pd.Series, fast: int = 12, slow: int = 26, signal: in
 
 def calculate_bollinger_bands(prices: pd.Series, period: int = 20, std_dev: float = 2.0) -> dict:
     """
-    Calcule Bollinger Bands correctement (fix pour ambiguous truth value).
-    
+    Calcule les bandes de Bollinger sur une série de prix.
+
+    Args:
+        prices (pd.Series): Série de prix de clôture.
+        period (int): Fenêtre de calcul (par défaut 20).
+        std_dev (float): Nombre d'écarts-types (par défaut 2.0).
+
     Returns:
-        dict avec upper, middle, lower, position
+        dict: Dictionnaire avec 'upper', 'middle', 'lower', 'position'.
+
+    Effects:
+        - Log d'erreur si le calcul échoue.
     """
     if len(prices) < period:
         return {
@@ -183,10 +203,17 @@ def calculate_bollinger_bands(prices: pd.Series, period: int = 20, std_dev: floa
 
 def calculate_support_resistance(prices: pd.Series, window: int = 20) -> dict:
     """
-    Calcule Support/Resistance (fix pour DataFrame.between error).
-    
+    Calcule les niveaux de support et résistance sur une série de prix.
+
+    Args:
+        prices (pd.Series): Série de prix de clôture.
+        window (int): Fenêtre de calcul (par défaut 20).
+
     Returns:
-        dict avec support, resistance, levels
+        dict: Dictionnaire avec 'support', 'resistance', 'levels'.
+
+    Effects:
+        - Log d'erreur si le calcul échoue.
     """
     if len(prices) < window * 2:
         current = float(prices.iloc[-1])
@@ -238,10 +265,17 @@ def calculate_support_resistance(prices: pd.Series, window: int = 20) -> dict:
 
 def determine_trend(prices: pd.Series, period: int = 50) -> str:
     """
-    Détermine tendance (FIX pour ambiguous Series comparison).
-    
+    Détermine la tendance du marché à partir des moyennes mobiles.
+
+    Args:
+        prices (pd.Series): Série de prix de clôture.
+        period (int): Fenêtre longue pour la tendance (par défaut 50).
+
     Returns:
-        "bullish", "bearish", or "sideways"
+        str: 'bullish', 'bearish', 'sideways' ou 'unknown'.
+
+    Effects:
+        - Log d'erreur si le calcul échoue.
     """
     if len(prices) < period:
         return "unknown"
@@ -276,10 +310,16 @@ def determine_trend(prices: pd.Series, period: int = 50) -> str:
 
 def analyze_technical(state: dict) -> dict:
     """
-    Agent Technical Analyzer FIXED - compile toutes les analyses.
-    
-    Retourne:
-        dict avec rsi, macd, bollinger, trend, support, resistance, signal
+    Agent principal d'analyse technique : compile tous les indicateurs majeurs.
+
+    Args:
+        state (dict): Etat de l'agent, doit contenir 'symbol' et 'prices_df'.
+
+    Returns:
+        dict: Résultat de l'analyse technique (rsi, macd, bollinger, trend, support, resistance, signal, etc.).
+
+    Effects:
+        - Logs d'information et d'avertissement.
     """
     
     symbol = state.get("symbol", "UNKNOWN")

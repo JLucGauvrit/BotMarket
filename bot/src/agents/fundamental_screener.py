@@ -18,7 +18,19 @@ ALPHA_VANTAGE_KEY = "demo"  # À remplacer par vraie clé
 
 
 def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
-    """Récupère données fondamentales pour actions."""
+    """
+    Récupère les données fondamentales d'une action via yfinance.
+
+    Args:
+        symbol (str): Symbole de l'action (ex: 'AAPL').
+
+    Returns:
+        Dict[str, Any]: Dictionnaire des métriques fondamentales (P/E, PEG, etc.).
+
+    Effects:
+        - Appelle l'API Yahoo Finance via yfinance.
+        - Log d'information ou d'erreur selon le résultat.
+    """
     
     try:
         ticker = yf.Ticker(symbol)
@@ -61,7 +73,19 @@ def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
 
 
 def get_crypto_fundamentals(symbol: str) -> Dict[str, Any]:
-    """Récupère données fondamentales pour crypto (CoinGecko API)."""
+    """
+    Récupère les données fondamentales d'une crypto via l'API CoinGecko.
+
+    Args:
+        symbol (str): Symbole de la crypto (ex: 'BTC').
+
+    Returns:
+        Dict[str, Any]: Dictionnaire des métriques fondamentales (market cap, supply, etc.).
+
+    Effects:
+        - Appelle l'API CoinGecko.
+        - Log d'information ou d'erreur selon le résultat.
+    """
     
     try:
         # Mapping symbole -> CoinGecko ID
@@ -112,7 +136,15 @@ def get_crypto_fundamentals(symbol: str) -> Dict[str, Any]:
 
 
 def screen_stock(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
-    """Screening logique pour actions."""
+    """
+    Applique la logique de screening sur les fondamentaux d'une action.
+
+    Args:
+        fundamentals (Dict[str, Any]): Dictionnaire des métriques fondamentales.
+
+    Returns:
+        Dict[str, Any]: Résultat du screening (pass, score, issues, warnings, reason).
+    """
     
     pe = fundamentals.get("pe_ratio")
     peg = fundamentals.get("peg_ratio")
@@ -165,7 +197,15 @@ def screen_stock(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def screen_crypto(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
-    """Screening logique pour crypto."""
+    """
+    Applique la logique de screening sur les fondamentaux d'une crypto.
+
+    Args:
+        fundamentals (Dict[str, Any]): Dictionnaire des métriques fondamentales.
+
+    Returns:
+        Dict[str, Any]: Résultat du screening (pass, score, issues, warnings, reason).
+    """
     
     market_cap_rank = fundamentals.get("market_cap_rank", 1000)
     mc_change_24h = fundamentals.get("market_cap_change_24h", 0)
@@ -218,7 +258,19 @@ def screen_crypto(fundamentals: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def screen_fundamentals(state: AgentState) -> Dict[str, Any]:
-    """Agent principal: screening fondamentaux."""
+    """
+    Agent principal de screening des fondamentaux (actions ou cryptos).
+
+    Args:
+        state (AgentState): Etat de l'agent, doit contenir 'symbol'.
+
+    Returns:
+        Dict[str, Any]: Résultat du screening, enrichi des fondamentaux collectés.
+
+    Effects:
+        - Appels API externes (Yahoo, CoinGecko).
+        - Logs d'information et d'avertissement.
+    """
     
     symbol = state.get('symbol', 'UNKNOWN')
     print(f"📊 [Fundamental Screener] Analyse {symbol}...")

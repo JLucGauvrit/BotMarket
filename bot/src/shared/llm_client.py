@@ -15,9 +15,24 @@ DEFAULT_MODEL = os.getenv("MODEL", "qwen2.5:1.5b")
 
 def ensure_model_ready(model_name: str = DEFAULT_MODEL, base_url: str = DEFAULT_OLLAMA_HOST):
     """
-    Vérifie si le modèle est présent sur le serveur Ollama.
-    S'il est absent, lance le téléchargement (pull) automatiquement.
-    Bloque l'exécution jusqu'à ce que le modèle soit prêt.
+    Ensure the specified Ollama model is available and ready.
+
+    This function checks the Ollama server for the presence of `model_name` and,
+    if absent, requests a pull. It blocks until the model is detected as
+    available (or until the pull process completes/raises). Used by agents to
+    guarantee the LLM is ready before making inference requests.
+
+    Args:
+        model_name (str): Name of the model to verify (ex: "qwen2.5:1.5b").
+        base_url (str): Base URL of the Ollama server (ex: "http://ollama:11434").
+
+    Returns:
+        None: This function does not return a value; it ensures readiness as a side effect.
+
+    Effects:
+        - Performs HTTP GET to `{base_url}/api/tags` to list available models.
+        - If model missing, performs HTTP POST to `{base_url}/api/pull` to download it.
+        - Emits logs (info/warning/error) on progress and failures.
     """
     logger.info(f"🤖 Vérification de la disponibilité du modèle '{model_name}'...")
 
@@ -63,8 +78,22 @@ def ensure_model_ready(model_name: str = DEFAULT_MODEL, base_url: str = DEFAULT_
         
 def get_llm(model_name: str = DEFAULT_MODEL, temperature: float = 0):
     """
-    Factory qui retourne une instance ChatOllama configurée.
-    Utilisée par tous les agents (Analyste, Sentiment, etc.).
+    Return a configured ChatOllama instance for inference.
+
+    This factory centralizes LLM client configuration so that agents share the
+    same base URL, model selection and temperature. The returned object is
+    suitable for prompt-based chat completions via LangChain integrations.
+
+    Args:
+        model_name (str): Model identifier to use (defaults to `DEFAULT_MODEL`).
+        temperature (float): Sampling temperature for generation (0 = deterministic).
+
+    Returns:
+        ChatOllama: Configured chat client instance wired to `DEFAULT_OLLAMA_HOST`.
+
+    Effects:
+        - No network calls are performed by this factory itself, but the returned
+          `ChatOllama` instance will use `DEFAULT_OLLAMA_HOST` when invoking the LLM.
     """
     return ChatOllama(
         base_url=DEFAULT_OLLAMA_HOST,

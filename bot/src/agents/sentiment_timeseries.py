@@ -20,7 +20,18 @@ logger = logging.getLogger("sentiment_ts")
 SENTIMENT_HISTORY = {}  # {symbol: [(timestamp, score, source, engagement)]}
 
 def store_sentiment(symbol: str, score: float, source: str, engagement: int = 0):
-    """Stocke score de sentiment avec timestamp."""
+    """
+    Stocke un score de sentiment pour un symbole avec timestamp et source.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        score (float): Score de sentiment (-1.0 à 1.0).
+        source (str): Source du score (ex: 'reddit', 'twitter').
+        engagement (int): Niveau d'engagement associé (par défaut 0).
+
+    Effects:
+        - Modifie la variable globale SENTIMENT_HISTORY.
+    """
     if symbol not in SENTIMENT_HISTORY:
         SENTIMENT_HISTORY[symbol] = []
     
@@ -40,7 +51,16 @@ def store_sentiment(symbol: str, score: float, source: str, engagement: int = 0)
 
 
 def get_sentiment_history(symbol: str, days: int = 7) -> List[Dict]:
-    """Récupère historique de sentiment (derniers N jours)."""
+    """
+    Récupère l'historique des scores de sentiment pour un symbole.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        days (int): Fenêtre de recherche en jours (par défaut 7).
+
+    Returns:
+        List[Dict]: Liste de scores horodatés.
+    """
     if symbol not in SENTIMENT_HISTORY:
         return []
     
@@ -52,7 +72,15 @@ def get_sentiment_history(symbol: str, days: int = 7) -> List[Dict]:
 
 
 def calculate_sentiment_trend(history: List[Dict]) -> Dict[str, Any]:
-    """Calcule tendance du sentiment (slope, volatility)."""
+    """
+    Calcule la tendance du sentiment à partir d'un historique.
+
+    Args:
+        history (List[Dict]): Liste de scores horodatés.
+
+    Returns:
+        Dict[str, Any]: Dictionnaire avec trend, slope, conviction, amplitude, etc.
+    """
     
     if len(history) < 2:
         return {
@@ -107,7 +135,16 @@ def calculate_sentiment_trend(history: List[Dict]) -> Dict[str, Any]:
 
 
 def scan_reddit_sentiment(symbol: str, subreddit: str = "cryptocurrency") -> Dict[str, Any]:
-    """Scrape Reddit pour sentiment. (Fallback si API indisponible)"""
+    """
+    Analyse le sentiment Reddit pour un symbole donné.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        subreddit (str): Nom du subreddit à analyser.
+
+    Returns:
+        Dict[str, Any]: Score de sentiment, engagement, source, etc.
+    """
     print(f"🔴 [Reddit] Scanning {symbol} on r/{subreddit}...")
     
     try:
@@ -141,7 +178,15 @@ def scan_reddit_sentiment(symbol: str, subreddit: str = "cryptocurrency") -> Dic
 
 
 def scan_twitter_sentiment(symbol: str) -> Dict[str, Any]:
-    """Scrape X (Twitter) pour sentiment."""
+    """
+    Analyse le sentiment Twitter/X pour un symbole donné.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+
+    Returns:
+        Dict[str, Any]: Score de sentiment, engagement, source, etc.
+    """
     print(f"🐦 [Twitter/X] Scanning {symbol}...")
     
     try:
@@ -169,7 +214,15 @@ def scan_twitter_sentiment(symbol: str) -> Dict[str, Any]:
 
 
 def aggregate_sentiment_sources(sources: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Fusionne les sentiments multi-source pondérés par engagement."""
+    """
+    Agrège les scores de sentiment multi-source pondérés par engagement.
+
+    Args:
+        sources (List[Dict[str, Any]]): Liste de scores de différentes sources.
+
+    Returns:
+        Dict[str, Any]: Score agrégé, confiance, nombre de sources.
+    """
     
     if not sources:
         return {"score": 0.5, "weighted_score": 0.5, "confidence": 0}
@@ -205,7 +258,18 @@ def aggregate_sentiment_sources(sources: List[Dict[str, Any]]) -> Dict[str, Any]
 
 
 def analyze_with_llm(symbol: str, sentiment_score: float, trend: Dict, sources_count: int) -> Dict[str, Any]:
-    """Analyse nuancée par LLM pour contexte."""
+    """
+    Génère une analyse de contexte via LLM à partir du score de sentiment et de la tendance.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        sentiment_score (float): Score agrégé de sentiment.
+        trend (Dict): Dictionnaire de tendance calculée.
+        sources_count (int): Nombre de sources agrégées.
+
+    Returns:
+        Dict[str, Any]: Contexte textuel généré et flag d'analyse LLM.
+    """
     
     try:
         llm = get_llm(temperature=0.1)
@@ -245,7 +309,19 @@ Réponds UNIQUEMENT le contexte (pas plus de 30 mots).
 
 
 def scan_sentiment_timeseries(state: AgentState) -> Dict[str, Any]:
-    """Agent principal: collecte sentiment multi-source avec historique."""
+    """
+    Agent principal de collecte et d'analyse du sentiment multi-source avec historique.
+
+    Args:
+        state (AgentState): Etat de l'agent, doit contenir 'symbol'.
+
+    Returns:
+        Dict[str, Any]: Résultat de l'analyse de sentiment (score, trend, contexte, etc.).
+
+    Effects:
+        - Appels API externes (Reddit, Twitter/X, LLM).
+        - Logs d'information et d'erreur.
+    """
     
     symbol = state.get('symbol', 'UNKNOWN')
     print(f"💭 [Sentiment TS] Analyse pour {symbol}...")

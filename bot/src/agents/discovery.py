@@ -15,6 +15,22 @@ logger = logging.getLogger(__name__)
 
 # Modèle de données
 class DiscoveryCandidate(BaseModel):
+    """
+    Représente une opportunité découverte par l'agent Discovery.
+
+    Attributes:
+        symbol (str): Ticker de l'actif (majuscule recommandé).
+        name (str): Nom complet de l'actif.
+        price_usd (float): Prix courant en USD (peut être 0 si non disponible).
+        price_change_1h_pct (float): Variation sur 1h en pourcentage.
+        price_change_24h_pct (float): Variation sur 24h en pourcentage.
+        volume_24h_usd (float): Volume 24h en USD.
+        market_cap_usd (float): Capitalisation en USD.
+        discovery_score (float): Score interne d'opportunité (0.0-1.0).
+        key_signals (List[str]): Liste de signaux ou motifs détectés.
+        asset_type (str): Type d'actif (ex: 'crypto', 'stock').
+    """
+
     symbol: str
     name: str
     price_usd: float
@@ -28,6 +44,19 @@ class DiscoveryCandidate(BaseModel):
 
 class DiscoveryAgent:
     def __init__(self, coingecko_api_key: Optional[str] = None):
+        """
+        Agent responsable de la découverte d'opportunités (crypto + actions volatiles).
+
+        Le `DiscoveryAgent` interroge des endpoints publics (CoinGecko) pour
+        assembler une liste d'actifs à analyser par le pipeline principal.
+
+        Args:
+            coingecko_api_key (Optional[str]): Clé API pour CoinGecko si requise (optionnelle).
+
+        Effects:
+            - Initialise une session HTTP asynchrone à l'usage des méthodes `fetch_*`.
+            - Ne réalise aucun appel réseau lors de l'instanciation.
+        """
         self.base_url = "https://api.coingecko.com/api/v3"
         self.session = None
         
@@ -50,7 +79,20 @@ class DiscoveryAgent:
 
     # --- PONT SYNCHRONE POUR MAIN.PY ---
     def scan_market(self) -> List[str]:
-        """Wrapper appelé par main.py."""
+        """
+        Effectue un scan synchronisé pour récupérer une liste de symboles cibles.
+
+        Cette méthode est un wrapper qui orchestre l'exécution asynchrone du
+        cycle de découverte (`run_discovery_cycle`) et retourne une liste de
+        symboles uniques à analyser par le bot.
+
+        Returns:
+            List[str]: Liste de symboles (ex: ['BTC','AAPL']).
+
+        Effects:
+            - Lance des appels réseau asynchrones vers l'API CoinGecko via aiohttp.
+            - Émet des logs d'information, d'avertissement et d'erreur en cas de problème.
+        """
         print("🔭 [Discovery] Scan des pépites (Trending & Gainers)...")
         try:
             try:
@@ -86,6 +128,20 @@ class DiscoveryAgent:
 
     # --- STRATEGIE 1 : LA HYPE (Trending Search) ---
     async def fetch_trending_coins(self) -> List[DiscoveryCandidate]:
+        """
+        Récupère les cryptos « trending » depuis CoinGecko.
+
+        Args:
+            Aucun.
+
+        Returns:
+            List[DiscoveryCandidate]: Liste d'objets candidats ordonnés par pertinence.
+
+        Effects:
+            - Effectue un GET HTTP vers `/search/trending`.
+            - Peut créer une session aiohttp si nécessaire.
+        """
+
         url = f"{self.base_url}/search/trending"
         candidates = []
         try:
@@ -122,6 +178,19 @@ class DiscoveryAgent:
 
     # --- STRATEGIE 2 : LE MOMENTUM (Volatilité) ---
     async def fetch_market_movers(self) -> List[DiscoveryCandidate]:
+        """
+        Récupère les cryptos ayant un fort volume / volatilité (market movers).
+
+        Args:
+            Aucun.
+
+        Returns:
+            List[DiscoveryCandidate]: Liste de candidats filtrés par capitalisation/volume.
+
+        Effects:
+            - Effectue un GET HTTP vers `/coins/markets` avec paramètres de tri.
+        """
+
         url = f"{self.base_url}/coins/markets"
         params = {
             "vs_currency": "usd",
@@ -174,7 +243,22 @@ class DiscoveryAgent:
         return candidates
 
     async def run_discovery_cycle(self) -> Dict[str, Any]:
-        """Combine Trending + Movers."""
+        """
+        Orchestration asynchrone combinant plusieurs stratégies de découverte.
+
+        Lancer en contexte asynchrone (`async with self`) pour garantir la
+        fermeture correcte de la session HTTP. Combine `fetch_trending_coins`
+        et `fetch_market_movers`, déduplique et retourne le top des
+        opportunités.
+
+        Returns:
+            Dict[str, Any]: Dictionnaire contenant la clé `top_opportunities` qui est
+                une liste de dicts sérialisés représentant des `DiscoveryCandidate`.
+
+        Effects:
+            - Effectue appels réseau asynchrones concurrents vers CoinGecko.
+            - Émet des logs en cas d'erreur et renvoie une liste vide sur exception.
+        """
         try:
             async with self:
                 t_trending = asyncio.create_task(self.fetch_trending_coins())

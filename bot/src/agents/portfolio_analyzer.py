@@ -21,7 +21,18 @@ POSITION_REASONS = {}
 
 
 def store_position_reason(symbol: str, reason: str, initial_sentiment: float = 0):
-    """Stocke la raison d'achat pour une position."""
+    """
+    Stocke la raison d'achat pour une position dans la base locale.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        reason (str): Raison d'achat.
+        initial_sentiment (float): Sentiment initial (par défaut 0).
+
+    Effects:
+        - Modifie la variable globale POSITION_REASONS.
+        - Log d'information.
+    """
     POSITION_REASONS[symbol] = {
         "reason": reason,
         "initial_sentiment": initial_sentiment,
@@ -31,7 +42,15 @@ def store_position_reason(symbol: str, reason: str, initial_sentiment: float = 0
 
 
 def get_position_reasons(symbol: str) -> Dict[str, Any]:
-    """Récupère la raison d'achat d'une position."""
+    """
+    Récupère la raison d'achat d'une position depuis la base locale.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+
+    Returns:
+        Dict[str, Any]: Dictionnaire avec raison, sentiment initial, date d'entrée.
+    """
     return POSITION_REASONS.get(symbol, {
         "reason": "unknown",
         "initial_sentiment": 0,
@@ -40,7 +59,20 @@ def get_position_reasons(symbol: str) -> Dict[str, Any]:
 
 
 def calculate_correlation_matrix(symbols: List[str], lookback_days: int = 30) -> pd.DataFrame:
-    """Calcule matrice de corrélation avec gestion d'erreurs robuste."""
+    """
+    Calcule la matrice de corrélation entre plusieurs actifs.
+
+    Args:
+        symbols (List[str]): Liste des symboles à corréler.
+        lookback_days (int): Fenêtre de calcul en jours (par défaut 30).
+
+    Returns:
+        pd.DataFrame: Matrice de corrélation.
+
+    Effects:
+        - Appels yfinance pour chaque symbole.
+        - Log d'erreur si le calcul échoue.
+    """
     try:
         prices = {}
         
@@ -94,7 +126,15 @@ def calculate_correlation_matrix(symbols: List[str], lookback_days: int = 30) ->
 
 def check_correlation_redundancy(new_symbol: str, current_positions: List[str], threshold: float = 0.8) -> Dict[str, Any]:
     """
-    Vérifie si nouvelle opportunité est trop corrélée avec positions existantes.
+    Vérifie si une nouvelle opportunité est trop corrélée avec les positions existantes.
+
+    Args:
+        new_symbol (str): Symbole de la nouvelle opportunité.
+        current_positions (List[str]): Liste des positions actuelles.
+        threshold (float): Seuil de corrélation (par défaut 0.8).
+
+    Returns:
+        Dict[str, Any]: Indique redondance, corrélation max, recommandations.
     """
     
     if not current_positions:
@@ -167,7 +207,17 @@ def check_correlation_redundancy(new_symbol: str, current_positions: List[str], 
 
 
 def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sector_exposure: float = 0.4) -> Dict[str, Any]:
-    """Vérifie l'exposition sectorielle."""
+    """
+    Vérifie l'exposition sectorielle d'une nouvelle opportunité par rapport au portefeuille.
+
+    Args:
+        new_symbol (str): Symbole de la nouvelle opportunité.
+        current_positions (List[str]): Liste des positions actuelles.
+        max_sector_exposure (float): Seuil maximal d'exposition (par défaut 0.4).
+
+    Returns:
+        Dict[str, Any]: Secteur, exposition, avertissement, etc.
+    """
     
     # Mapping simplifié symbole -> secteur (Extensible)
     sector_map = {
@@ -210,7 +260,16 @@ def check_sector_exposure(new_symbol: str, current_positions: List[str], max_sec
 
 
 def validate_reason_still_valid(symbol: str, current_sentiment: float) -> Dict[str, Any]:
-    """Vérifie si la raison initiale d'achat est toujours valable."""
+    """
+    Vérifie si la raison initiale d'achat d'une position est toujours valable.
+
+    Args:
+        symbol (str): Symbole de l'actif.
+        current_sentiment (float): Score de sentiment actuel.
+
+    Returns:
+        Dict[str, Any]: Résultat de la validation, recommandation, etc.
+    """
     
     reason_data = get_position_reasons(symbol)
     
@@ -238,7 +297,19 @@ def validate_reason_still_valid(symbol: str, current_sentiment: float) -> Dict[s
 
 
 def analyze_portfolio(state: AgentState) -> Dict[str, Any]:
-    """Agent principal: analyse portefeuille vs nouvelle opportunité."""
+    """
+    Agent principal d'analyse du portefeuille face à une nouvelle opportunité.
+
+    Args:
+        state (AgentState): Etat de l'agent, doit contenir 'symbol' et 'sentiment_score'.
+
+    Returns:
+        Dict[str, Any]: Résultat de l'analyse (corrélation, secteur, recommandations, etc.).
+
+    Effects:
+        - Appels API externes (Gateway, yfinance).
+        - Logs d'information et d'avertissement.
+    """
     
     new_symbol = state.get('symbol', 'UNKNOWN')
     
