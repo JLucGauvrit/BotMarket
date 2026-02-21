@@ -20,6 +20,7 @@ services:
   brain:
     build: ./bot
     env_file: .env
+    restart: unless-stopped
     depends_on:
       - gateway
       - ollama
@@ -53,7 +54,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    restart: always
+    restart: unless-stopped
 
   # 3. Observabilité
   
