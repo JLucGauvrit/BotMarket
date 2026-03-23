@@ -23,38 +23,13 @@ services:
     restart: unless-stopped
     depends_on:
       - gateway
-      - ollama
     develop:
       watch:
       - action: sync+restart
         path: ./bot
         target: /brain
-
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
     networks:
       - trading-net
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: trading_ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama  # PERSISTANCE DES MODÈLES (Indispensable)
-    environment:
-      - OLLAMA_DEBUG=1
-    networks:
-      - trading-net
-    # 👇 Active ceci si tu as une carte NVIDIA pour accélérer l'IA
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
 
   # 3. Observabilité
   
@@ -69,7 +44,7 @@ services:
     ports:
       - "8501:8501"         # Port par défaut de Streamlit
     volumes:
-      - ./dashboard:/app    # IMPORTANT : Permet de modifier app.py sans redémarrer le conteneur (Hot-reload)
+      - ./dashboard:/app   
     environment:
       - GATEWAY_URL=http://gateway:8000
     depends_on:
@@ -85,9 +60,6 @@ services:
   #     - ./grafana/provisioning:/etc/grafana/provisioning
   #   networks:
   #     - trading-net
-
-volumes:
-  ollama_data:
 
 networks:
   trading-net:

@@ -450,9 +450,9 @@ def analyze_technical(state: dict) -> dict:
             f"Signal={technical_signal}"
         )
         
-        return response
+        return {"technical_report": response}
         
     except Exception as e:
         logger.error(f"❌ Erreur analyse technique {symbol}: {e}", exc_info=True)
-        return default_response
+        return {"technical_report": default_response}
     

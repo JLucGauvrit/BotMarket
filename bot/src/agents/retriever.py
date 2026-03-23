@@ -34,24 +34,41 @@ async def get_coingecko_id(session, symbol: str) -> str:
     except: pass
     return None
 
-async def fetch_crypto_price_coingecko(symbol: str) -> Tuple[float, str]:
-    """Récupère prix crypto via CoinGecko (Fallback)."""
+async def fetch_crypto_data_coingecko(symbol: str) -> Tuple[float, pd.DataFrame, str]:
+    """Récupère le prix ET l'historique via CoinGecko (Fallback complet)."""
     try:
         async with aiohttp.ClientSession() as session:
             coin_id = await get_coingecko_id(session, symbol)
-            if not coin_id: return 0.0, symbol
+            if not coin_id: return 0.0, pd.DataFrame(), symbol
             
-            url = "https://api.coingecko.com/api/v3/simple/price"
-            params = {"ids": coin_id, "vs_currencies": "usd"}
-            async with session.get(url, params=params, timeout=3) as resp:
+            # 1. Prix Actuel
+            price = 0.0
+            url_price = "https://api.coingecko.com/api/v3/simple/price"
+            async with session.get(url_price, params={"ids": coin_id, "vs_currencies": "usd"}, timeout=3) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if coin_id in data:
-                        price = data[coin_id]["usd"]
-                        logger.info(f"✅ Prix CoinGecko {symbol}: ${price}")
-                        return float(price), symbol
-    except: pass
-    return 0.0, symbol
+                    price = float(data.get(coin_id, {}).get("usd", 0.0))
+                    logger.info(f"✅ Prix CoinGecko {symbol}: ${price}")
+
+            # 2. Historique des prix (90 jours) pour le Technicien
+            df = pd.DataFrame()
+            if price > 0:
+                url_hist = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+                async with session.get(url_hist, params={"vs_currency": "usd", "days": "90"}, timeout=3) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if "prices" in data:
+                            df = pd.DataFrame(data["prices"], columns=["Date", "Close"])
+                            df["Date"] = pd.to_datetime(df["Date"], unit="ms")
+                            df.set_index("Date", inplace=True)
+                            df.index = df.index.strftime('%Y-%m-%d')
+                            logger.info(f"✅ Historique CoinGecko récupéré pour {symbol} ({len(df)} jours)")
+
+            return price, df, symbol
+    except Exception as e:
+        logger.error(f"❌ Erreur CoinGecko: {e}")
+    
+    return 0.0, pd.DataFrame(), symbol
 
 def smart_fetch_price_and_history(symbol: str) -> Tuple[float, pd.DataFrame, str]:
     """
@@ -101,10 +118,74 @@ def smart_fetch_price_and_history(symbol: str) -> Tuple[float, pd.DataFrame, str
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        cg_price, _ = loop.run_until_complete(fetch_crypto_price_coingecko(clean))
+        # Appel de la NOUVELLE fonction
+        cg_price, cg_df, valid_symbol = loop.run_until_complete(fetch_crypto_data_coingecko(clean))
+        
         if cg_price > 0:
-            return cg_price, pd.DataFrame(), clean
-    except: pass
+            return cg_price, cg_df, valid_symbol
+            
+    except Exception as e:
+        logger.error(f"Erreur Fallback CG: {e}")
+
+    logger.warning(f"⚠️ Prix introuvable pour {symbol}")
+    return 0.0, pd.DataFrame(), clean
+
+def smart_fetch_price_and_history(symbol: str) -> Tuple[float, pd.DataFrame, str]:
+    """
+    Stratégie de récupération priorisée :
+    1. Yahoo Finance (Actions: TSLA, AAPL)
+    2. Yahoo Finance (Cryptos: BTC-USD)
+    3. CoinGecko (Exotique: PIPPIN)
+    """
+    clean = symbol.upper().replace("/", "").replace("-USD", "")
+    if clean.endswith("USD") and len(clean) > 3: clean = clean[:-3]
+
+    # ORDRE IMPORTANT : On teste les tickers Yahoo d'abord
+    candidates = [symbol, clean, f"{clean}-USD"]
+    candidates = list(dict.fromkeys(candidates))
+
+    # Silence Yahoo
+    logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
+    for candidate in candidates:
+        try:
+            ticker = yf.Ticker(candidate)
+            
+            # Vérification via History (plus fiable que fast_info)
+            hist = ticker.history(period="5d")
+            
+            if not hist.empty:
+                price = float(hist['Close'].iloc[-1])
+                
+                # Récup historique long pour le technicien
+                df = ticker.history(period="3mo")
+                if not df.empty:
+                    df.index = df.index.strftime('%Y-%m-%d') # Fix Timestamp
+                
+                logging.getLogger("yfinance").setLevel(logging.WARNING)
+                logger.info(f"✅ Données Yahoo {candidate}: ${price:.2f}")
+                return price, df, candidate
+                
+        except: continue
+    
+    logging.getLogger("yfinance").setLevel(logging.WARNING)
+
+    # Fallback CoinGecko (si Yahoo échoue)
+    try:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Appel de la NOUVELLE fonction
+        cg_price, cg_df, valid_symbol = loop.run_until_complete(fetch_crypto_data_coingecko(clean))
+        
+        if cg_price > 0:
+            return cg_price, cg_df, valid_symbol
+            
+    except Exception as e:
+        logger.error(f"Erreur Fallback CG: {e}")
 
     logger.warning(f"⚠️ Prix introuvable pour {symbol}")
     return 0.0, pd.DataFrame(), clean
